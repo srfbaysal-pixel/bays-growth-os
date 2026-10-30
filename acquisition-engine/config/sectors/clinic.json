@@ -1,0 +1,35 @@
+{
+  "key": "clinic",
+  "name": "Klinik",
+  "description": "Diş klinikleri ve uygun özel sağlık kuruluşları",
+  "discovery": {
+    "queries": ["diş kliniği", "diş hekimi", "ağız ve diş sağlığı polikliniği", "fizik tedavi merkezi", "özel poliklinik"],
+    "google_place_types": ["dentist", "dental_clinic", "physiotherapist"],
+    "exclude_name_patterns": ["devlet hastanesi", "üniversite", "şehir hastanesi", "aile sağlığı merkezi"]
+  },
+  "signals": {
+    "no_online_booking":   { "weight": 20, "label": "Online randevu yok", "evidence_field": "has_online_booking", "expect": false },
+    "no_whatsapp_link":    { "weight": 10, "label": "WhatsApp bağlantısı yok", "evidence_field": "has_whatsapp_link", "expect": false },
+    "has_instagram":       { "weight": 10, "label": "Instagram hesabı var", "evidence_field": "has_instagram", "expect": true },
+    "has_website":         { "weight": 10, "label": "Web sitesi var", "evidence_field": "has_website", "expect": true },
+    "many_reviews":        { "weight": 10, "label": "20+ Google yorumu", "evidence_field": "review_count_gte_20", "expect": true },
+    "contact_email_found": { "weight": 15, "label": "Kurumsal e-posta bulundu", "evidence_field": "has_public_email", "expect": true },
+    "phone_found":         { "weight": 10, "label": "Telefon bulundu", "evidence_field": "has_phone", "expect": true },
+    "multi_doctor":        { "weight": 15, "label": "Birden fazla hekim (çıkarım)", "evidence_field": "multi_practitioner", "expect": true, "inference_ok": true }
+  },
+  "qualification_threshold": 50,
+  "service_preference": ["appointment_lead_management", "whatsapp_ai_assistant", "instagram_dm_automation", "custom_ai_automation", "social_content_automation"],
+  "message_angles": {
+    "appointment_lead_management": "randevu taleplerinin ve hatırlatmaların tek panelden yönetilmesi",
+    "whatsapp_ai_assistant": "çalışma saatleri, konum ve randevu sorularına anında yanıt (tıbbi tavsiye vermeden)",
+    "instagram_dm_automation": "Instagram'dan gelen randevu sorularının otomatik karşılanması",
+    "custom_ai_automation": "hasta hatırlatma ve kontrol randevusu süreçlerinin otomasyonu",
+    "social_content_automation": "mevzuata uygun bilgilendirici içerik planı"
+  },
+  "compliance": {
+    "requires_legal_review_for_campaign": true,
+    "collect_health_data": false,
+    "ai_assistant_restrictions": ["no_diagnosis", "no_medical_advice", "no_treatment_claims"],
+    "special_notes": "Sağlık kuruluşlarının tanıtımı mevzuata tabidir (Sağlık Hizmetlerinde Tanıtım ve Bilgilendirme Faaliyetleri Hakkında Yönetmelik). Referans videosu ve kampanya hukuki kontrol olmadan yayınlanmaz. AI asistan teşhis/tavsiye vermez; sağlık verisi toplanmaz."
+  }
+}

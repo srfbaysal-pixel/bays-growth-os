@@ -1,0 +1,22 @@
+{
+  "name": "bayssystems-acquisition-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BaysSystems Customer Acquisition Engine V1 — API, n8n workflows, PWA panel",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "install:all": "npm --prefix apps/api ci && npm --prefix apps/panel ci",
+    "migrate": "npm --prefix apps/api run migrate",
+    "seed": "npm --prefix apps/api run seed",
+    "dev:api": "npm --prefix apps/api run dev",
+    "dev:panel": "npm --prefix apps/panel run dev",
+    "build": "npm --prefix apps/api run build && npm --prefix apps/panel run build",
+    "test": "npm --prefix apps/api test && npm --prefix apps/panel test",
+    "test:api": "npm --prefix apps/api test",
+    "test:panel": "npm --prefix apps/panel test",
+    "test:e2e": "npm --prefix apps/panel run test:e2e",
+    "typecheck": "npm --prefix apps/api run typecheck && npm --prefix apps/panel run typecheck",
+    "n8n:validate": "node tools/validate-n8n.mjs",
+    "email:preflight": "npm --prefix apps/api run email:preflight"
+  }
+}

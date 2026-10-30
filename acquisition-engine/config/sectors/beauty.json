@@ -1,0 +1,35 @@
+{
+  "key": "beauty",
+  "name": "Güzellik",
+  "description": "Kuaförler, güzellik salonları, bakım işletmeleri",
+  "discovery": {
+    "queries": ["kuaför", "güzellik salonu", "güzellik merkezi", "cilt bakım merkezi", "erkek kuaförü", "nail art"],
+    "google_place_types": ["beauty_salon", "hair_salon", "hair_care", "nail_salon", "spa"],
+    "exclude_name_patterns": ["kozmetik toptan", "malzeme"]
+  },
+  "signals": {
+    "no_online_booking":   { "weight": 20, "label": "Online randevu yok", "evidence_field": "has_online_booking", "expect": false },
+    "no_whatsapp_link":    { "weight": 10, "label": "Sitede/profilde WhatsApp bağlantısı yok", "evidence_field": "has_whatsapp_link", "expect": false },
+    "has_instagram":       { "weight": 15, "label": "Instagram hesabı var", "evidence_field": "has_instagram", "expect": true },
+    "low_post_frequency":  { "weight": 10, "label": "Düzensiz paylaşım (çıkarım)", "evidence_field": "social_posting_irregular", "expect": true, "inference_ok": true },
+    "has_website":         { "weight": 5,  "label": "Web sitesi var", "evidence_field": "has_website", "expect": true },
+    "many_reviews":        { "weight": 10, "label": "20+ Google yorumu", "evidence_field": "review_count_gte_20", "expect": true },
+    "contact_email_found": { "weight": 10, "label": "E-posta bulundu", "evidence_field": "has_public_email", "expect": true },
+    "phone_found":         { "weight": 10, "label": "Telefon bulundu", "evidence_field": "has_phone", "expect": true },
+    "high_rating":         { "weight": 10, "label": "4.3+ puan", "evidence_field": "rating_gte_4_3", "expect": true }
+  },
+  "qualification_threshold": 45,
+  "service_preference": ["appointment_lead_management", "instagram_dm_automation", "whatsapp_ai_assistant", "social_content_automation", "custom_ai_automation"],
+  "message_angles": {
+    "appointment_lead_management": "randevu taleplerinin WhatsApp ve Instagram'dan otomatik toplanması, no-show hatırlatmaları",
+    "instagram_dm_automation": "Instagram DM'den gelen fiyat/randevu sorularının anında yanıtlanması",
+    "whatsapp_ai_assistant": "mesai dışı gelen randevu taleplerinin kaybedilmemesi",
+    "social_content_automation": "haftalık düzenli içerik ile yeni müşteri görünürlüğü",
+    "custom_ai_automation": "müşteri hatırlatma ve sadakat mesajlarının otomasyonu"
+  },
+  "compliance": {
+    "requires_legal_review_for_campaign": false,
+    "collect_health_data": false,
+    "special_notes": "Cilt/sağlık durumu bilgisi toplanmaz; estetik tıbbi işlem iddiası yapılmaz."
+  }
+}

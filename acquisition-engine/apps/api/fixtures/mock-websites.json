@@ -1,0 +1,8 @@
+{
+  "https://mavidil.example": { "status": 200, "html": "<html><head><title>Mavi Dil Kursu | İngilizce, Almanca</title></head><body><a href='https://instagram.com/mavidilkursu'>Instagram</a><p>Bize yazın: info@mavidil.example</p><p>0212 555 01 01</p></body></html>" },
+  "https://zirvekurs.example": { "status": 200, "html": "<html><head><title>Zirve Kurs - 3 Şube</title></head><body><a href='https://wa.me/902165550202'>WhatsApp</a><a href='/iletisim'>İletişim</a><button>Online Kayıt</button></body></html>" },
+  "https://zirvekurs.example/iletisim": { "status": 200, "html": "<html><body><p>kayit@zirvekurs.example</p></body></html>" },
+  "https://studioelif.example": { "status": 200, "html": "<html><head><title>Studio Elif</title></head><body><a href='https://instagram.com/studioelif'>ig</a></body></html>" },
+  "https://glowbakim.example": { "status": 200, "html": "<html><head><title>Glow Bakım</title></head><body><a href='https://calendly.com/glow'>Online Randevu Al</a><a href='https://wa.me/902325551313'>wa</a></body></html>" },
+  "https://dentis.example": { "status": 200, "html": "<html><head><title>Dentis Klinik | Hekimlerimiz</title></head><body><a href='https://instagram.com/dentisklinik'>ig</a><p>randevu@dentis.example</p></body></html>" }
+}

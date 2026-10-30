@@ -1,0 +1,17 @@
+{
+  "services": [
+    { "key": "social_content_automation", "name": "Sosyal medya içerik otomasyonu", "description": "Haftalık içerik planı, görsel/metin üretimi ve onaylı yayın takvimi.", "sector_fit": { "education": 0.8, "beauty": 0.9, "clinic": 0.6 } },
+    { "key": "instagram_dm_automation", "name": "Instagram gelen mesaj otomasyonu", "description": "Instagram DM'lere anında, kurallı yanıt ve talep toplama (resmî Instagram Messaging API).", "sector_fit": { "education": 0.7, "beauty": 1.0, "clinic": 0.7 } },
+    { "key": "whatsapp_ai_assistant", "name": "WhatsApp AI asistanı", "description": "WhatsApp Business Platform üzerinde 7/24 soru-cevap ve talep toplama. Kliniklerde tıbbi tavsiye vermez.", "sector_fit": { "education": 0.9, "beauty": 0.8, "clinic": 0.9 } },
+    { "key": "appointment_lead_management", "name": "Randevu ve talep yönetimi", "description": "Tüm kanallardan gelen randevu/taleplerin tek panelde toplanması, hatırlatmalar ve takip.", "sector_fit": { "education": 0.9, "beauty": 1.0, "clinic": 1.0 } },
+    { "key": "custom_ai_automation", "name": "İşletmeye özel AI ve süreç otomasyonları", "description": "İşletmenin kendi süreçlerine göre tasarlanan AI destekli otomasyonlar.", "sector_fit": { "education": 0.6, "beauty": 0.5, "clinic": 0.6 } }
+  ],
+  "price_plans_note": "Fiyatlar burada değil, veritabanındaki price_plans tablosunda yönetilir (panel/CLI ile). Seed sırasında aşağıdaki örnek planlar YER TUTUCU olarak eklenir; gerçek fiyatları girmeden teklif oluşturmayın.",
+  "example_price_plans": [
+    { "service_key": "social_content_automation", "name": "Başlangıç", "setup_fee_cents": 0, "monthly_fee_cents": 0, "currency": "TRY", "notes": "YER TUTUCU — gerçek fiyat girilmedi" },
+    { "service_key": "instagram_dm_automation", "name": "Başlangıç", "setup_fee_cents": 0, "monthly_fee_cents": 0, "currency": "TRY", "notes": "YER TUTUCU — gerçek fiyat girilmedi" },
+    { "service_key": "whatsapp_ai_assistant", "name": "Başlangıç", "setup_fee_cents": 0, "monthly_fee_cents": 0, "currency": "TRY", "notes": "YER TUTUCU — gerçek fiyat girilmedi" },
+    { "service_key": "appointment_lead_management", "name": "Başlangıç", "setup_fee_cents": 0, "monthly_fee_cents": 0, "currency": "TRY", "notes": "YER TUTUCU — gerçek fiyat girilmedi" },
+    { "service_key": "custom_ai_automation", "name": "Proje", "setup_fee_cents": 0, "monthly_fee_cents": 0, "currency": "TRY", "notes": "YER TUTUCU — gerçek fiyat girilmedi" }
+  ]
+}

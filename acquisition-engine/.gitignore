@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+.next/
+out/
+coverage/
+reports/*.json
+playwright-report/
+test-results/
+*.log
+backups/

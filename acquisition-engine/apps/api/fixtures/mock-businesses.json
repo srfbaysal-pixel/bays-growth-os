@@ -1,0 +1,12 @@
+[
+  { "sector_key": "education", "external_id": "mock-edu-001", "name": "Mavi Dil Kursu", "website": "https://mavidil.example", "phone": "0212 555 01 01", "email": "info@mavidil.example", "city": "İstanbul", "district": "Kadıköy", "rating": 4.6, "review_count": 48, "instagram_handle": "mavidilkursu" },
+  { "sector_key": "education", "external_id": "mock-edu-002", "name": "Zirve Özel Öğretim Kursu", "website": "https://zirvekurs.example", "phone": "0216 555 02 02", "city": "İstanbul", "district": "Ümraniye", "rating": 4.2, "review_count": 12 },
+  { "sector_key": "education", "external_id": "mock-edu-003", "name": "Adım Özel Eğitim ve Rehabilitasyon Merkezi", "phone": "0312 555 03 03", "city": "Ankara", "district": "Çankaya", "rating": 4.8, "review_count": 31 },
+  { "sector_key": "education", "external_id": "mock-edu-004", "name": "Mavi Dil Kursu Ltd. Şti.", "website": "https://mavidil.example", "phone": "+90 212 555 01 01", "city": "İstanbul", "district": "Kadıköy", "rating": 4.6, "review_count": 48 },
+  { "sector_key": "beauty", "external_id": "mock-bty-001", "name": "Studio Elif Kuaför", "website": "https://studioelif.example", "phone": "0532 555 11 11", "city": "İstanbul", "district": "Beşiktaş", "rating": 4.7, "review_count": 120, "instagram_handle": "studioelif" },
+  { "sector_key": "beauty", "external_id": "mock-bty-002", "name": "Nur Güzellik Salonu", "phone": "0533 555 12 12", "city": "İzmir", "district": "Karşıyaka", "rating": 4.1, "review_count": 9 },
+  { "sector_key": "beauty", "external_id": "mock-bty-003", "name": "Glow Cilt Bakım Merkezi", "website": "https://glowbakim.example", "email": "merhaba@glowbakim.example", "phone": "0232 555 13 13", "city": "İzmir", "district": "Bornova", "rating": 4.5, "review_count": 64 },
+  { "sector_key": "clinic", "external_id": "mock-cln-001", "name": "Dentis Ağız ve Diş Sağlığı Polikliniği", "website": "https://dentis.example", "phone": "0216 555 21 21", "email": "randevu@dentis.example", "city": "İstanbul", "district": "Ataşehir", "rating": 4.9, "review_count": 210 },
+  { "sector_key": "clinic", "external_id": "mock-cln-002", "name": "Gülüş Diş Kliniği", "phone": "0312 555 22 22", "city": "Ankara", "district": "Çankaya", "rating": 4.4, "review_count": 27 },
+  { "sector_key": "clinic", "external_id": "mock-cln-003", "name": "Ankara Devlet Hastanesi Diş Birimi", "phone": "0312 555 23 23", "city": "Ankara", "rating": 3.9, "review_count": 500 }
+]
