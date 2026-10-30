@@ -1,10 +1,10 @@
 /** D5 — backup/restore betikleri: yalnız geçici test DB'sinde; parola sızıntısı, yanlış hedef, bozuk sağlama. */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { freshDb, closeTestPool, TEST_DB_URL } from './helpers.js';
+import { freshDb, closeTestPool, testPool, TEST_DB_URL } from './helpers.js';
 import type pg from 'pg';
 
 const ROOT = path.resolve(__dirname, '../../..');
@@ -70,5 +70,75 @@ describe.skipIf(!hasTools)('D5 — backup/restore', () => {
     expect((await p2.query(`SELECT 1 FROM sectors WHERE key = 'beauty'`)).rowCount).toBe(1);
     await p2.end();
     expect(existsSync(dump + '.sha256')).toBe(true);
+  });
+});
+
+/** D5 takip (Work bulguları): checksum SEÇİLEN dump'ı doğrular; özel karakterli parolalar hiçbir çıktıda kalmaz. */
+describe.skipIf(!hasTools)('D5 takip — checksum seçilen dosyayı doğrular, özel karakterli parola sızmaz', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'bays-bk2-'));
+  // Ham (percent-encoded) ve çözülmüş biçim: p@ss/w0&rd*.$[x]#\  — sed/regex özel karakterleri içerir
+  const RAW = 'p%40ss%2Fw0%26rd%2A.%24%5Bx%5D%23%5C';
+  const DEC = 'p@ss/w0&rd*.$[x]#\\';
+  const specialUrl = (db: string, user = 'bays_acq') => `postgres://${user}:${RAW}@127.0.0.1:5432/${db}`;
+  const sh = (script: string) => spawnSync('bash', ['-c', `. deploy/scripts/db-common.sh; ${script}`], { cwd: ROOT, encoding: 'utf8' });
+  const noLeak = (out: string) => { expect(out).not.toContain(RAW); expect(out).not.toContain(DEC); expect(out).not.toContain('w0&rd'); expect(out).not.toContain('w0%26rd'); };
+
+  it('redact/mask: ham ve çözülmüş parola düz metin olarak silinir; regex özel karakterleri etkisiz', () => {
+    const r = sh(`printf 'a %s b %s c\\n' '${RAW}' '${DEC.replace(/'/g, "'\\''")}' | redact '${specialUrl('bays_acq_test')}'; mask_url '${specialUrl('bays_acq_test')}'; echo; url_db_name '${specialUrl('bays_acq_test')}'`);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('a *** b *** c');
+    expect(r.stdout).toContain('postgres://bays_acq:***@127.0.0.1:5432/bays_acq_test');
+    expect(r.stdout.trim().endsWith('bays_acq_test')).toBe(true);
+    noLeak(r.stdout + r.stderr);
+    // Parola yoksa çıktı değişmez; '/' ve '&' içeren parola URL ayrıştırmasını bozmaz
+    expect(sh(`printf 'x\\n' | redact 'postgres://u@h/db'; mask_url 'postgres://u@h/db'`).stdout).toBe('x\npostgres://u@h/db');
+  });
+  it('bağlantı hatası ve kimlik reddi çıktılarında parola yok (psql hata metni dahil)', () => {
+    const r = run('backup.sh', [dir], { DATABASE_URL: specialUrl('bays_acq_test_yok'), EXPECTED_DB_NAME: 'bays_acq_test_yok' });
+    expect(r.code).toBe(2); expect(r.out).toMatch(/hedefe bağlanılamadı \(postgres:\/\/bays_acq:\*\*\*@/); noLeak(r.out);
+    const n8n = run('restore.sh', [path.join(dir, 'yok.dump'), '--target', specialUrl('N8N'), '--yes'], {});
+    expect(n8n.code).toBe(3); noLeak(n8n.out); // dosya kontrolü önce; yine de sızıntı yok
+    expect(readdirSync(dir).filter((f) => f.endsWith('.dump')).length).toBe(0);
+  });
+  it('gerçek özel karakterli rol ile yedek alınır ve tüm çıktılar temizdir (rol yoksa atlanır)', async () => {
+    const exists = (await testPool().query(`SELECT 1 FROM pg_roles WHERE rolname = 'bays_acq_special'`)).rowCount === 1;
+    if (!exists) { console.warn('bays_acq_special rolü yok (CREATEROLE gerekir), pozitif özel parola testi atlandı'); return; }
+    // Şema sahibi (bays_acq) test rolüne salt okuma verir; freshDb şemayı yeniden kurduğu için her seferinde
+    await testPool().query('GRANT USAGE ON SCHEMA public TO bays_acq_special; GRANT SELECT ON ALL TABLES IN SCHEMA public TO bays_acq_special; GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO bays_acq_special');
+    const r = run('backup.sh', [dir], { DATABASE_URL: specialUrl('bays_acq_test', 'bays_acq_special'), EXPECTED_DB_NAME: 'bays_acq_test' });
+    expect(r.code, r.out).toBe(0); expect(r.out).toMatch(/Hedef doğrulandı: postgres:\/\/bays_acq_special:\*\*\*@/); noLeak(r.out);
+    expect(readdirSync(dir).some((f) => /^bays_acq_test-.*\.dump$/.test(f))).toBe(true);
+  });
+  it('checksum: .sha256 içindeki dosya adı değil, seçilen dump\'ın özeti karşılaştırılır', () => {
+    const backup = run('backup.sh', [dir], { DATABASE_URL: TEST_DB_URL, EXPECTED_DB_NAME: 'bays_acq_test' });
+    expect(backup.code, backup.out).toBe(0);
+    const dump = path.join(dir, readdirSync(dir).filter((f) => /^bays_acq_test-.*\.dump$/.test(f)).sort().pop()!);
+    const sumLine = readFileSync(dump + '.sha256', 'utf8');
+    expect(sumLine).toMatch(new RegExp(`^[0-9a-f]{64}  ${path.basename(dump).replace(/[.]/g, '\\.')}\\n$`)); // taşınabilir biçim
+    expect(spawnSync('sha256sum', ['-c', '--quiet', path.basename(dump) + '.sha256'], { cwd: dir }).status).toBe(0);
+    const goodHash = sumLine.split(' ')[0];
+    // (1) Kurcalanmış kopya + geçerli BAŞKA dosyayı işaret eden .sha256 → reddedilir (eski davranış kabul ediyordu)
+    const tampered = path.join(dir, 'tampered.dump');
+    writeFileSync(tampered, Buffer.concat([readFileSync(dump), Buffer.from('x')]));
+    writeFileSync(tampered + '.sha256', `${goodHash}  ${path.basename(dump)}\n`);
+    const t = run('restore.sh', [tampered, '--target', TEST_DB_URL, '--yes'], { EXPECTED_DB_NAME: 'bays_acq_test' });
+    expect(t.code).toBe(3); expect(t.out).toMatch(/sağlama uyuşmuyor.*tampered\.dump/);
+    // (2) Doğru özet, yanlış/eski dosya adı → seçilen dosya doğrulanır, geri yükleme ilerler
+    const copy = path.join(dir, 'renamed-copy.dump');
+    writeFileSync(copy, readFileSync(dump));
+    writeFileSync(copy + '.sha256', `${goodHash}  eski-ad.dump\n`);
+    const ok = run('restore.sh', [copy, '--target', TEST_DB_URL, '--yes'], { EXPECTED_DB_NAME: 'bays_acq_test' });
+    expect(ok.code, ok.out).toBe(0);
+    // (3) Geçersiz biçimli .sha256 → reddedilir
+    writeFileSync(copy + '.sha256', `not-a-hash  renamed-copy.dump\n`);
+    expect(run('restore.sh', [copy, '--target', TEST_DB_URL, '--yes'], { EXPECTED_DB_NAME: 'bays_acq_test' }).code).toBe(3);
+    // (4) Göreli hedef dizinle alınan yedeğin .sha256'sı mutlak yol içermez
+    const rel = 'backups-test-rel';
+    const b2 = run('backup.sh', [rel], { DATABASE_URL: TEST_DB_URL, EXPECTED_DB_NAME: 'bays_acq_test' });
+    expect(b2.code, b2.out).toBe(0);
+    const relDir = path.join(ROOT, rel);
+    const relSum = readdirSync(relDir).find((f) => f.endsWith('.sha256'))!;
+    expect(readFileSync(path.join(relDir, relSum), 'utf8')).not.toContain('/');
+    for (const f of readdirSync(relDir)) rmSync(path.join(relDir, f)); rmSync(relDir, { recursive: true, force: true });
   });
 });

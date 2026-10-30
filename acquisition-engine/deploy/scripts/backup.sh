@@ -13,8 +13,10 @@ mkdir -p "$DEST"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 OUT="$DEST/${EXPECTED_DB_NAME}-$STAMP.dump"
 pg_dump --format=custom --no-owner --no-privileges --file="$OUT" "$DATABASE_URL" 2> >(redact "$DATABASE_URL" >&2)
-sha256sum "$OUT" > "$OUT.sha256"
+# Sağlama: "<sha256>  <dosya adı>" (taşınabilir; restore seçilen dosyanın özetini karşılaştırır, adı değil)
+( cd "$DEST" && sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256" )
 # Okunabilirlik: dump içeriği listelenebiliyor mu?
 pg_restore --list "$OUT" > /dev/null
 find "$DEST" -name "${EXPECTED_DB_NAME}-*.dump*" -mtime +14 -delete
+verify_dump_checksum "$OUT"
 echo "Yedek: $OUT ($(du -h "$OUT" | cut -f1)), sağlama: $OUT.sha256"

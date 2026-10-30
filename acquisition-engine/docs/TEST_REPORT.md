@@ -8,7 +8,7 @@ Tarih: 2026-10-30 (dağıtım öncesi düzeltmeler D1–D6 sonrası) · Ortam: g
 | --- | --- |
 | `npm --prefix apps/api run typecheck` | Hata yok |
 | `npm --prefix apps/panel run typecheck` | Hata yok |
-| `npm --prefix apps/api test` (vitest, gerçek PostgreSQL `bays_acq_test`) | **96/96 geçti**, 14 dosya, ~10 sn (`hardening.test.ts` 14, `config.test.ts` 5 (D1), `ssrf.test.ts` 7 (D4), `scripts.test.ts` 4 (D5, gerçek pg_dump/pg_restore, geçici test DB), `quota-bounce.test.ts` 3 (D6)) |
+| `npm --prefix apps/api test` (vitest, gerçek PostgreSQL `bays_acq_test`) | **100/100 geçti**, 14 dosya, ~10 sn (`hardening.test.ts` 14, `config.test.ts` 5 (D1), `ssrf.test.ts` 7 (D4), `scripts.test.ts` 8 (D5 + D5 takip, gerçek pg_dump/pg_restore, geçici test DB), `quota-bounce.test.ts` 3 (D6)) |
 | `npm --prefix apps/panel test` (vitest) | **2/2 geçti** |
 | `npm --prefix apps/panel run build` (Next 15, standalone) | Başarılı; ilk yük JS ~103–111 kB |
 | `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npm --prefix apps/panel run test:e2e` | **10/10 geçti** (5 senaryo × Pixel 7 + masaüstü), ~30 sn; API + panel otomatik başlatıldı |
@@ -40,6 +40,8 @@ Tarih: 2026-10-30 (dağıtım öncesi düzeltmeler D1–D6 sonrası) · Ortam: g
 | D1 boş opsiyonel URL | `config.test.ts` (eksik/boş/boşluk → kapalı; geçerli; geçersiz → sırsız hata; `.env.example` yüklenir; kapalı webhook dış çağrı yapmaz) | ✅ |
 | D4 SSRF sabitleme | `ssrf.test.ts` (rebinding: ikinci çözüm özel olsa da taşıma doğrulanan IP ile; yönlendirmede yeniden doğrulama; gerçek undici taşıma yerel sunucuya sabit IP ile Host korunarak; boyut/süre sınırı; TLS self-signed red, hostname uyuşmazlığı red, CA ile başarı) | ✅ |
 | D5 yedek/geri yükleme | `scripts.test.ts` (kimlik doğrulama, n8n reddi, yanlış ad, bozuk/eksik sağlama, onaysız iptal, parola sızmaz, gerçek restore test DB'de) | ✅ |
+| D5 takip — checksum seçilen dosyayı doğrular | `scripts.test.ts` "D5 takip": kurcalanmış kopya + başka geçerli dosyayı işaret eden `.sha256` → red (eski davranış kabul ediyordu); doğru özet + yanlış dosya adı → seçilen dosya doğrulanır ve restore ilerler; geçersiz biçimli `.sha256` → red; göreli dizinle alınan yedeğin `.sha256` dosyası yol içermez, `sha256sum -c` ile uyumlu | ✅ |
+| D5 takip — özel karakterli parola sızmaz | `scripts.test.ts` "D5 takip": parola `p@ss/w0&rd*.$[x]#\` (percent-encoded URL'de) — `redact` ham ve çözülmüş biçimi düz metin eşlemeyle siler (awk `index`, regex yok); `mask_url` ve `url_db_name` `/`, `&`, `@` içeren parolayla doğru ayrıştırır; bağlantı hatası (psql metni dahil) ve n8n reddi çıktılarında sızıntı yok; gerçek `bays_acq_special` rolüyle (özel parola) yedek alındı, tüm çıktı temiz | ✅ |
 | D6 kota ve bounce oranı | `quota-bounce.test.ts` (dry-run kota tüketmez, gerçek-send kota 1'den başlar; 100 işten 5 bounce → %5, delivered/yinelenen bounce etkisiz, 6. bounce ve eşleşmeyen DSN eşiği aşar; <10 örnek değerlendirilmez; dry_run paydada yok) | ✅ |
 | Referans kampanyası | `workflows.test.ts` (durum makinesi, paylaşım doğrulaması → indirim hakkı, klinikte mevzuat engeli) | ✅ |
 | E-posta DNS ön kontrol | `workflows.test.ts` enjekte çözümleyici ile SPF/DKIM/DMARC/MX | ✅ |

@@ -15,8 +15,7 @@ EXPECTED_DB_NAME="${EXPECTED_DB_NAME:-bays_acq}"
 
 # 1) Dosya bütünlüğü: sağlama dosyası ZORUNLU ve eşleşmeli
 [ -f "$DUMP" ] || { echo "DURDURULDU: yedek dosyası yok: $DUMP" >&2; exit 3; }
-[ -f "$DUMP.sha256" ] || { echo "DURDURULDU: sağlama dosyası yok ($DUMP.sha256). Doğrulanamayan yedek geri yüklenmez." >&2; exit 3; }
-( cd "$(dirname "$DUMP")" && sha256sum -c --quiet "$(basename "$DUMP").sha256" ) || { echo "DURDURULDU: sağlama uyuşmuyor, dosya bozuk veya değiştirilmiş." >&2; exit 3; }
+verify_dump_checksum "$DUMP" || exit 3
 pg_restore --list "$DUMP" > /dev/null || { echo "DURDURULDU: yedek okunamıyor (pg_restore --list)." >&2; exit 3; }
 
 # 2) Hedef kimliği (n8n reddi + beklenen ad), çıktıda parola yok

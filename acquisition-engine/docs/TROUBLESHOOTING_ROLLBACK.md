@@ -47,7 +47,7 @@ deploy/scripts/backup.sh /var/backups/bays-acq-v1          # her değişiklik ö
 deploy/scripts/restore.sh /var/backups/bays-acq-v1/bays_acq-<tarih>.dump   # onay ister; --yes yalnız otomasyon için
 ```
 
-Her iki betik gerçek `current_database()` değerini `EXPECTED_DB_NAME` ile karşılaştırır; ad `n8n` içeriyorsa (büyük/küçük harf fark etmeksizin) veya beklenen addan farklıysa `pg_dump`/`pg_restore` hiç başlamaz. Sağlama dosyası (`.sha256`) zorunludur; eksik/uyumsuz sağlama veya okunamayan yedek geri yüklemeyi durdurur. Çıktılarda bağlantı parolası maskelenir.
+Her iki betik gerçek `current_database()` değerini `EXPECTED_DB_NAME` ile karşılaştırır; ad `n8n` içeriyorsa (büyük/küçük harf fark etmeksizin) veya beklenen addan farklıysa `pg_dump`/`pg_restore` hiç başlamaz. Sağlama dosyası (`.sha256`, biçim `<sha256>  <dosya adı>`) zorunludur; restore, **seçilen** dump dosyasının özetini bu değerle karşılaştırır (içindeki dosya adı dikkate alınmaz), eksik/uyumsuz/geçersiz sağlama veya okunamayan yedek geri yüklemeyi durdurur. Çıktılarda bağlantı parolası (percent-encoded ve çözülmüş biçimi) maskelenir; `DATABASE_URL` içindeki parola libpq kuralı gereği percent-encoded olmalıdır (`@`→`%40`, `/`→`%2F`, `&`→`%26`, `#`→`%23`).
 
 ### Yeni sürümü kaldırma (eski sistemler ve mevcut servisler etkilenmez)
 
