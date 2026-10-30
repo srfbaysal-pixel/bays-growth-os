@@ -4,6 +4,7 @@ import { resolveSession, hasRole, type Role } from '../auth/service.js';
 import { verifySignature } from '../lib/crypto.js';
 import { RateLimiter } from '../lib/rateLimit.js';
 import { AppError, forbidden, unauthorized } from '../lib/errors.js';
+import { ipInAnyCidr } from '../lib/ip.js';
 
 export const COOKIE_NAME = 'bays_acq_session';
 
@@ -74,9 +75,17 @@ export function requireUser(min: Role = 'viewer') {
   };
 }
 
-/** n8n ↔ API: X-Bays-Timestamp + X-Bays-Signature (HMAC-SHA256) zorunlu. */
+/**
+ * n8n ↔ API (Ö1): iki katman.
+ *  1) Ağ: kaynak IP INTERNAL_ALLOWED_IPS içinde olmalı (varsayılan loopback + özel ağlar). Caddy arkasında
+ *     req.ip X-Forwarded-For'dan gelir (trustProxy yalnız loopback/özel ağ proxy'lerine güvenir).
+ *  2) Kimlik: X-Bays-Timestamp + X-Bays-Signature (HMAC-SHA256, 5 dk pencere) zorunlu.
+ * Boş liste = ağ katmanı kapalı (yalnız HMAC); üretimde önerilmez.
+ */
 export function requireN8n(ctx: AppContext) {
   return async (req: FastifyRequest, _reply: FastifyReply) => {
+    const allowed = ctx.cfg.INTERNAL_ALLOWED_IPS;
+    if (allowed.length > 0 && !ipInAnyCidr(req.ip, allowed)) throw forbidden('Bu uç yalnız izinli ağlardan çağrılabilir (INTERNAL_ALLOWED_IPS)');
     const ts = String(req.headers['x-bays-timestamp'] ?? '');
     const sig = String(req.headers['x-bays-signature'] ?? '');
     const body = req.rawBodyText ?? '';

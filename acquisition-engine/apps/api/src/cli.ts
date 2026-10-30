@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { getConfig } from './config.js';
 import { buildContext } from './app.js';
-import { runMigrations } from './db/migrate.js';
+import { runMigrations, assertDatabaseIdentity } from './db/migrate.js';
 import { loadSectorFiles, upsertSectors, getSector } from './sectors/loader.js';
 import { loadServiceCatalog, upsertServices } from './catalog/services.js';
 import { createUser } from './auth/service.js';
@@ -21,10 +21,12 @@ async function main() {
   const cfg = getConfig();
   const ctx = buildContext(cfg);
   try {
+    // Her CLI komutu önce hedef veritabanı kimliğini doğrular (yanlış/n8n DB'de durur).
+    if (cmd) await assertDatabaseIdentity(ctx.pool, cfg.EXPECTED_DB_NAME);
     switch (cmd) {
-      case 'migrate': { const done = await runMigrations(ctx.pool); console.log(done.length ? `Uygulandı: ${done.join(', ')}` : 'Şema güncel'); break; }
+      case 'migrate': { const done = await runMigrations(ctx.pool, undefined, cfg.EXPECTED_DB_NAME); console.log(done.length ? `Uygulandı: ${done.join(', ')}` : 'Şema güncel'); break; }
       case 'seed': {
-        await runMigrations(ctx.pool);
+        await runMigrations(ctx.pool, undefined, cfg.EXPECTED_DB_NAME);
         await upsertSectors(ctx.pool, await loadSectorFiles());
         await upsertServices(ctx.pool, await loadServiceCatalog());
         if (cfg.ADMIN_EMAIL && cfg.ADMIN_PASSWORD) { await createUser(ctx.pool, { email: cfg.ADMIN_EMAIL, password: cfg.ADMIN_PASSWORD, role: 'owner' }); console.log(`Yönetici: ${cfg.ADMIN_EMAIL}`); }
@@ -55,6 +57,13 @@ async function main() {
       case 'wf2-prepare': console.log(JSON.stringify(await runWf2Prepare(ctx.pool, cfg, ctx.ai, { runId: `cli-wf2p-${randomToken(6)}`, limit: Number(flag('limit') ?? 20), sectorKey: flag('sector') ?? null }), null, 2)); break;
       case 'wf2-send': console.log(JSON.stringify(await runWf2Send(ctx.pool, cfg, ctx.email, { runId: `cli-wf2s-${randomToken(6)}`, limit: Number(flag('limit') ?? 10) }), null, 2)); break;
       case 'wf3-metrics': console.log(JSON.stringify(await runWf3Metrics(ctx.pool, { runId: `cli-wf3m-${randomToken(6)}`, day: flag('day'), weekly: args.includes('--weekly') }), null, 2)); break;
+      case 'purge-dry-run': {
+        // K3: kuru çalışma kayıtlarını temizler (gerçek gönderim/olaylara dokunmaz)
+        const jobs = await ctx.pool.query(`DELETE FROM send_jobs WHERE status = 'dry_run' RETURNING draft_id`);
+        const drafts = await ctx.pool.query(`DELETE FROM message_drafts WHERE status = 'dry_run' RETURNING id`);
+        const runs = await ctx.pool.query(`DELETE FROM workflow_runs WHERE run_id LIKE 'cli-%' OR run_id LIKE 'e2e-%' RETURNING id`);
+        console.log(`Silindi: ${jobs.rowCount} dry_run iş, ${drafts.rowCount} dry_run taslak, ${runs.rowCount} CLI/e2e workflow kaydı`); break;
+      }
       case 'import-csv': {
         const file = flag('file'); const sectorKey = flag('sector');
         if (!file || !sectorKey) throw new Error('--file ve --sector gerekli');
@@ -70,7 +79,7 @@ async function main() {
         console.log(`Oluşturulan: ${created}, birleştirilen: ${merged}`); break;
       }
       default:
-        console.log('Komutlar: migrate | seed | create-user --email --password [--role] | email-preflight | wf1 --sector --city [--limit --target] | wf2-prepare [--limit --sector] | wf2-send [--limit] | wf3-metrics [--day --weekly] | import-csv --file --sector');
+        console.log('Komutlar: migrate | seed | create-user --email --password [--role] | email-preflight | wf1 --sector --city [--limit --target] | wf2-prepare [--limit --sector] | wf2-send [--limit] | wf3-metrics [--day --weekly] | purge-dry-run | import-csv --file --sector');
     }
   } finally { await ctx.pool.end(); }
 }

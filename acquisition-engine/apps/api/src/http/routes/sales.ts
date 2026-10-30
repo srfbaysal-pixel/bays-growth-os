@@ -100,7 +100,7 @@ export function salesRoutes(app: FastifyInstance, ctx: AppContext) {
   /** Panelden manuel yanıt girişi (IMAP bağlı değilken) */
   app.post('/api/inbound/manual', { preHandler: mut }, async (req) => {
     const body = z.object({ from: z.string().min(3).max(300), subject: z.string().max(300).optional(), text: z.string().min(1).max(20000), business_id: uuid.optional() }).parse(req.body);
-    const res = await processInbound(ctx.pool, ctx.ai, { ...body, channel: 'email', provider_message_id: null, received_at: new Date().toISOString() });
+    const res = await processInbound(ctx.pool, ctx.ai, { ...body, channel: 'email', provider_message_id: null, received_at: new Date().toISOString() }, { replyDomain: ctx.cfg.EMAIL_REPLY_DOMAIN });
     if (body.business_id && !res.matched) await ctx.pool.query('UPDATE inbound_messages SET matched_business_id = $2, match_method = $3 WHERE id = $1', [res.inbound_id, body.business_id, 'manual']);
     return res;
   });

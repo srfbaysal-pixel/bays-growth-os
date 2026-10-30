@@ -10,11 +10,20 @@ acq.bayssystem.com {
     handle /webhooks/* {
         reverse_proxy 127.0.0.1:4100
     }
-    # n8n'in çağırdığı iç uçlar: HMAC imzalı. İsteğe bağlı olarak yalnız sunucu içi/Docker ağına kısıtlayın:
-    @internal path /internal/*
-    handle @internal {
-        # remote_ip 127.0.0.1 ::1 172.16.0.0/12 10.0.0.0/8   ← n8n'in çıkış IP'sine göre açın
+    # Ö1: n8n'in çağırdığı iç uçlar. Ağ katmanı: yalnız özel ağlar (loopback, Docker köprüsü, LAN).
+    # n8n ana makinede çalışıp alan adı üzerinden çağırıyorsa kaynak IP sunucunun GENEL IP'sidir:
+    # bu durumda ya n8n'de BAYS_API_URL=http://127.0.0.1:4100 kullanın (Caddy'yi atlar, önerilen)
+    # ya da aşağıdaki listeye sunucunun genel IP'sini ekleyin. Kimlik katmanı (HMAC) API'de ayrıca zorunludur.
+    @internal_allowed {
+        path /internal/*
+        remote_ip private_ranges
+    }
+    handle @internal_allowed {
         reverse_proxy 127.0.0.1:4100
+    }
+    @internal_denied path /internal/*
+    handle @internal_denied {
+        respond "forbidden" 403
     }
 
     # Geri kalan her şey Next.js paneli

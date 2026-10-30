@@ -12,6 +12,7 @@ export interface AppContext {
   email: EmailProvider;
   discovery: DiscoveryProvider;
   fetchFn?: typeof fetch;
+  lookup?: (hostname: string) => Promise<string[]>;
 }
 
 declare module 'fastify' {

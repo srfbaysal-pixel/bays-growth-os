@@ -6,15 +6,15 @@ Geçmişte gönderim sorunu yaşandığı için e-posta modülü "çalıştığ�
 
 | Mekanizma | Yer | Davranış |
 | --- | --- | --- |
-| DRY_RUN | `config.ts`, `sender.ts` | Sağlayıcıya istek atılmaz; `dry_run` olayı yazılır. `LIVE_OUTREACH_ENABLED` DRY_RUN açıkken etkisizdir. |
+| DRY_RUN | `config.ts`, `sender.ts` | Sağlayıcıya istek atılmaz; iş ve taslak `dry_run` durumuna geçer, `sent_at` boş kalır, işletme durumu değişmez; aynı işletme için sonradan gerçek taslak hazırlanır. `LIVE_OUTREACH_ENABLED` DRY_RUN açıkken etkisizdir. |
 | Test alıcıları | `policy.ts` | Test modunda yalnız `TEST_RECIPIENTS` listesindekilere otomatik gönderim; diğerleri manuel görev. |
 | Uyumluluk kapıları | `policy.ts` | `COMPLIANCE_IYS_VERIFIED`, `COMPLIANCE_KVKK_VERIFIED` (+ klinik) false iken otomatik gönderim yok. |
 | İnsan onayı | `approvals.ts` | `send_jobs` kaydı yalnız `approveDraft` ile oluşur; `draft_id` UNIQUE. |
 | İdempotency | `sender.ts` | `FOR UPDATE SKIP LOCKED` kilidi; iş kimliği `Idempotency-Key`/`X-Bays-Idempotency` başlığı; `accepted` sonrası ikinci istek yok. |
 | Retry | `sender.ts` | 3 deneme, 2/10/30 dk bekleme; sonra `failed`. Deneme sayısı DB'de. |
 | Kota | `killswitch.ts` | Saatlik/günlük sayaç atomik; aşımda iş kuyruğa geri döner (1 saat). |
-| Kill-switch | `killswitch.ts` | Bounce oranı > `EMAIL_MAX_BOUNCE_RATE` (≥10 örnek), ardışık hata ≥ `EMAIL_MAX_CONSECUTIVE_ERRORS`, günlük kota dolu → `outreach_paused`. Panelden sürdürülür. |
-| Bounce/şikâyet | `recordDeliveryEvent`, `inbound/process.ts` | Alıcı e-posta engelleme listesine girer; iş `bounced`. |
+| Kill-switch | `killswitch.ts`, `health/notify.ts` | Bounce oranı > `EMAIL_MAX_BOUNCE_RATE` (≥10 örnek), ardışık hata ≥ `EMAIL_MAX_CONSECUTIVE_ERRORS`, günlük kota dolu → `outreach_paused`. Durum değişiminde panel görevi + audit + `ALERT_WEBHOOK_URL` bildirimi. Panelden sürdürülür. |
+| Bounce/şikâyet | `recordDeliveryEvent`, `inbound/process.ts`, `inbound/bounce.ts` | Sağlayıcı webhook'u veya gelen DSN postası: `Final-Recipient`/gövdedeki Message-ID ile iş bulunur, alıcı engellenir, iş `bounced`. Eşleşmeyen DSN'de de alıcı engellenir ve inceleme görevi açılır; bu postalar kill-switch bounce oranına dahildir. Gönderen (MAILER-DAEMON) engellenmez. |
 | Ret | `inbound/process.ts` | "hayır/istemiyorum/unsubscribe" → işletme + e-posta + alan adı + telefon + Instagram tüm kanallarda engellenir. |
 | Yanıt eşleştirme | `inbound/process.ts` | `Reply-To: reply+<token>@EMAIL_REPLY_DOMAIN` ve `Message-ID: <job_id@domain>`; yedek: kişi e-postası, alan adı. |
 | List-Unsubscribe | `smtp.ts` | Her gönderimde `List-Unsubscribe` başlığı. |
@@ -39,6 +39,8 @@ Komut: `npm --prefix apps/api run email:preflight` veya panel → Sistem → **E
 - Günlük hacmi düşük başlatın (pilot: 10–20/gün), bounce oranı %2 üstünde durup listeyi temizleyin.
 
 ## Test protokolü (sırayla, her biri raporlanır)
+
+> **Dağıtım kabul kriteri (K5):** 2–6. adımlar gerçek SMTP/IMAP hesabıyla bu ortamda **doğrulanmadı**. Bu adımlar sizin hesabınızla geçip sonuçları `IMPLEMENTATION_STATUS.md`'ye işlenmeden canlı gönderim açılmaz.
 
 1. **Mock:** `npm run test:api` — gönderim, retry, kill-switch, mükerrer önleme testleri geçmeli.
 2. **Bağlantı:** `EMAIL_PROVIDER=smtp` + bilgiler → `email:preflight` → `provider.verify OK`.

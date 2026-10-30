@@ -2,7 +2,7 @@ import type pg from 'pg';
 import type { Config } from '../config.js';
 import type { AiProvider } from '../ai/types.js';
 import type { DiscoveryProvider } from '../discovery/types.js';
-import { fetchWebsiteFacts } from '../discovery/website.js';
+import { fetchWebsiteFacts, type LookupFn } from '../discovery/website.js';
 import { isExcluded, recordDiscoveryObservations, recordEvidence, recordWebsiteObservations, upsertBusiness, upsertContact } from '../discovery/pipeline.js';
 import { getSector } from '../sectors/loader.js';
 import { scoreBusiness } from '../scoring/score.js';
@@ -15,7 +15,7 @@ export interface Wf1Stats { sector: string; city: string; found: number; created
  * WF1 — Lead Discovery & Qualification.
  * n8n bu fonksiyonu /internal/wf1/run ile tetikler; CLI de çağırabilir.
  */
-export async function runWf1(pool: pg.Pool, cfg: Config, deps: { discovery: DiscoveryProvider; ai: AiProvider; fetchFn?: typeof fetch }, params: { sectorKey: string; city: string; limitPerQuery?: number; targetQualified?: number; runId: string }): Promise<Wf1Stats> {
+export async function runWf1(pool: pg.Pool, cfg: Config, deps: { discovery: DiscoveryProvider; ai: AiProvider; fetchFn?: typeof fetch; lookup?: LookupFn }, params: { sectorKey: string; city: string; limitPerQuery?: number; targetQualified?: number; runId: string }): Promise<Wf1Stats> {
   const stats: Wf1Stats = { sector: params.sectorKey, city: params.city, found: 0, created: 0, merged: 0, excluded: 0, websites_fetched: 0, inferred: 0, qualified: 0, errors: [] };
   await heartbeat(pool, 'wf1_discovery', params.runId, 'running', stats);
   try {
@@ -41,7 +41,7 @@ export async function runWf1(pool: pg.Pool, cfg: Config, deps: { discovery: Disc
         const row = (await pool.query('SELECT website, name, city, rating, review_count FROM businesses WHERE id = $1', [up.id])).rows[0];
         let siteTitle: string | null = null;
         if (cfg.WEBSITE_FETCH_ENABLED && row.website) {
-          const facts = await fetchWebsiteFacts(row.website, { timeoutMs: cfg.WEBSITE_FETCH_TIMEOUT_MS, fetchFn: deps.fetchFn });
+          const facts = await fetchWebsiteFacts(row.website, { timeoutMs: cfg.WEBSITE_FETCH_TIMEOUT_MS, fetchFn: deps.fetchFn, lookup: deps.lookup });
           await recordWebsiteObservations(pool, up.id, facts);
           if (facts.fetched) { stats.websites_fetched++; siteTitle = facts.title ?? null; }
         } else {

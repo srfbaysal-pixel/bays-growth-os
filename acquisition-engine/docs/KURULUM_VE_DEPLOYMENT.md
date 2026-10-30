@@ -32,14 +32,15 @@ openssl rand -hex 32   # SESSION_SECRET
 openssl rand -hex 32   # N8N_SHARED_SECRET
 ```
 
-Zorunlu: `DATABASE_URL`, `SESSION_SECRET`, `N8N_SHARED_SECRET`, `PUBLIC_BASE_URL=https://acq.bayssystem.com`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (≥12 karakter). İlk aşamada **değiştirmeyin**: `DRY_RUN=true`, `LIVE_OUTREACH_ENABLED=false`, `EMAIL_PROVIDER=mock`.
+Zorunlu: `DATABASE_URL`, `EXPECTED_DB_NAME` (varsayılan `bays_acq`; migration/seed/API yalnız bu adda çalışır, `n8n` içeren adda asla), `SESSION_SECRET`, `N8N_SHARED_SECRET`, `PUBLIC_BASE_URL=https://acq.bayssystem.com`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (≥12 karakter). Opsiyonel: `INTERNAL_ALLOWED_IPS` (iç uçlara izinli ağlar), `ALERT_WEBHOOK_URL` (kill-switch bildirimi). İlk aşamada **değiştirmeyin**: `DRY_RUN=true`, `LIVE_OUTREACH_ENABLED=false`, `EMAIL_PROVIDER=mock`.
 
 `.env` dosyası `chmod 600` olmalı; depoya asla eklenmez.
 
 ## 3. Kurulum — Docker Compose (önerilen)
 
 ```bash
-docker compose build
+deploy/scripts/build-images.sh          # bellek/swap kontrollü sıralı derleme; RAM yetersizse durur
+# RAM dar ise başka makinede: deploy/scripts/build-images.sh --export bays-acq-images.tar → sunucuda docker load -i ...
 docker compose up -d api panel          # (Seçenek B ise: --profile db)
 docker compose exec api node dist/cli.js seed   # migration + sektör + katalog + yönetici
 docker compose logs -f api | head
@@ -74,7 +75,7 @@ HTTPS sertifikası otomatik alınır. `/api/*`, `/webhooks/*`, `/internal/*` →
 ## 5. n8n workflow'larını içe aktarma
 
 1. n8n'de ortam değişkenlerini tanımlayın (docker ise n8n servisinin `environment:` bölümüne; mevcut değişkenlere **ekleme** yapın):
-   - `BAYS_API_URL=https://acq.bayssystem.com` (ya da n8n aynı makinedeyse `http://127.0.0.1:4100`; Docker içinden `http://host.docker.internal:4100` veya `http://172.17.0.1:4100`)
+   - `BAYS_API_URL`: n8n aynı makinedeyse **`http://127.0.0.1:4100`** (önerilen; Caddy'yi atlar), Docker içinden `http://host.docker.internal:4100` veya `http://172.17.0.1:4100`. Alan adı (`https://acq.bayssystem.com`) üzerinden çağrı yapılacaksa kaynak IP sunucunun genel IP'sidir; bunu hem Caddy `remote_ip` listesine hem `INTERNAL_ALLOWED_IPS`'e eklemeniz gerekir.
    - `BAYS_N8N_SHARED_SECRET=<.env'deki N8N_SHARED_SECRET>`
    - opsiyonel `BAYS_PILOT_CITIES=İstanbul,Ankara,İzmir`, `BAYS_TARGET_PER_SECTOR=30`, `BAYS_WF2_PREPARE_LIMIT=20`, `BAYS_WF2_SEND_LIMIT=10`
    - `$env` ifadelerinin çalışması için `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` (varsayılan) olmalı.
@@ -95,6 +96,14 @@ Chrome → `https://acq.bayssystem.com` → giriş → menü → **Ana ekrana ek
 2. `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` → Onaylar sayfasında AI taslaklarını okuyun; doğrulama uyarılarını izleyin.
 3. E-posta: [EMAIL_DELIVERABILITY.md](EMAIL_DELIVERABILITY.md) kapılarını geçin; `EMAIL_PROVIDER=smtp|resend`, `DRY_RUN=false`, `LIVE_OUTREACH_ENABLED=true` ama `TEST_RECIPIENTS` ile yalnız test alıcıları (politika gereği gerçek alıcılar manuel göreve düşer — çünkü `COMPLIANCE_*` hâlâ false).
 4. Hukuki doğrulama sonrası `COMPLIANCE_IYS_VERIFIED=true`, `COMPLIANCE_KVKK_VERIFIED=true` (klinik için ayrıca `COMPLIANCE_CLINIC_ADVERTISING_VERIFIED=true`). Bu andan itibaren onaylı e-postalar gerçek alıcılara gider.
+
+## 7'. DRY_RUN provası sonrası temizlik
+
+Kuru çalışma kayıtları (`dry_run` taslak ve işler) gerçek lead'lerin yeniden işlenmesini engellemez; yine de üretim veritabanını temiz başlatmak için:
+
+```bash
+npm --prefix apps/api run cli -- purge-dry-run      # yalnız dry_run kayıtları ve CLI/e2e workflow kayıtlarını siler
+```
 
 ## 8. Güncelleme
 

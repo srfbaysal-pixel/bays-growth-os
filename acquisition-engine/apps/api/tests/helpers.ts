@@ -47,9 +47,12 @@ export async function mockWebsiteFetch(): Promise<typeof fetch> {
   }) as unknown as typeof fetch;
 }
 
-export async function makeCtx(pool: pg.Pool, over: Partial<Config> = {}): Promise<AppContext & { email: MockEmailProvider }> {
+/** Testlerde DNS: fixture alan adları herkese açık bir adrese çözülür (SSRF kontrolünden geçer). */
+export const publicLookup = async (_host: string) => ['93.184.216.34'];
+
+export async function makeCtx(pool: pg.Pool, over: Partial<Config> = {}): Promise<AppContext & { email: MockEmailProvider; lookup: (h: string) => Promise<string[]> }> {
   const c = cfg(over);
-  return { cfg: c, pool, ai: new MockAiProvider(), email: new MockEmailProvider(), discovery: new MockDiscoveryProvider(), fetchFn: await mockWebsiteFetch() };
+  return { cfg: c, pool, ai: new MockAiProvider(), email: new MockEmailProvider(), discovery: new MockDiscoveryProvider(), fetchFn: await mockWebsiteFetch(), lookup: publicLookup };
 }
 
 export async function seedUsers(pool: pg.Pool) {

@@ -5,11 +5,18 @@
 #      "db" profilini başlatmayın (docker compose up -d api panel).
 #   B) Ayrı Postgres konteyneri: docker compose --profile db up -d
 name: bays-acq
+
+# Ö9: log rotasyonu — her servis en çok 3 × 10 MB json log tutar
+x-logging: &default-logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
 services:
   db:
     image: postgres:16-alpine
     profiles: ["db"]
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: bays_acq
       POSTGRES_USER: bays_acq
@@ -24,10 +31,13 @@ services:
   api:
     build: { context: ., dockerfile: deploy/Dockerfile.api }
     restart: unless-stopped
+    logging: *default-logging
     env_file: .env
     environment:
       API_HOST: 0.0.0.0
       AUTO_MIGRATE: "true"
+      # Ö1: /internal/* yalnız bu ağlardan; n8n ana makinede ve alan adı üzerinden çağırıyorsa sunucunun genel IP'sini ekleyin
+      INTERNAL_ALLOWED_IPS: ${INTERNAL_ALLOWED_IPS:-127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
     ports:
       - "127.0.0.1:4100:4100"
     deploy: { resources: { limits: { memory: 256M } } }
@@ -36,6 +46,7 @@ services:
   panel:
     build: { context: ., dockerfile: deploy/Dockerfile.panel, args: { API_INTERNAL_URL: http://api:4100 } }
     restart: unless-stopped
+    logging: *default-logging
     environment:
       API_INTERNAL_URL: http://api:4100
     ports:

@@ -23,10 +23,17 @@ export async function prepareDraftForBusiness(db: Queryable, cfg: Config, ai: Ai
   const contact = (await db.query('SELECT * FROM contacts WHERE business_id = $1 ORDER BY is_primary DESC, created_at LIMIT 1', [businessId])).rows[0] ?? null;
   const email = contact?.email_normalized ?? b.email_public ?? null;
   const channel: Channel = opts.channel ?? (email ? 'email' : b.instagram_handle ? 'instagram' : b.phone_e164 ? 'whatsapp' : 'phone');
-  const seq = opts.sequence ?? 1;
+  // İdempotency: aynı işletme+kanal için ETKİN bir taslak varsa yenisi üretilmez.
+  // 'dry_run' (K3) ve 'cancelled' taslaklar etkin sayılmaz; yeni taslak bir sonraki sıra numarasıyla açılır.
+  const existing = (await db.query(
+    `SELECT id, status FROM message_drafts WHERE business_id = $1 AND channel = $2 AND status NOT IN ('dry_run','cancelled') ORDER BY created_at DESC LIMIT 1`,
+    [businessId, channel]
+  )).rows[0];
+  if (existing && opts.sequence === undefined) return { draft_id: existing.id, status: existing.status, policy: null, validation: null, skipped: 'Zaten var (idempotent)' };
+  const seq = opts.sequence ?? Number((await db.query('SELECT COUNT(*)::int AS n FROM message_drafts WHERE business_id = $1 AND channel = $2', [businessId, channel])).rows[0].n) + 1;
   const idem = `${businessId}:${channel}:${seq}`;
-  const existing = (await db.query('SELECT id, status FROM message_drafts WHERE idempotency_key = $1', [idem])).rows[0];
-  if (existing) return { draft_id: existing.id, status: existing.status, policy: null, validation: null, skipped: 'Zaten var (idempotent)' };
+  const byKey = (await db.query('SELECT id, status FROM message_drafts WHERE idempotency_key = $1', [idem])).rows[0];
+  if (byKey) return { draft_id: byKey.id, status: byKey.status, policy: null, validation: null, skipped: 'Zaten var (idempotent)' };
 
   // Kanıt: yalnız doğrulanmış gözlemler taslağa girer (çıkarımlar girmez)
   const evidence = await db.query(`SELECT id, field, value, source_key FROM research_evidence WHERE business_id = $1 AND kind = 'observation' ORDER BY captured_at`, [businessId]);

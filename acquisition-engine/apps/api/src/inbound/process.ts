@@ -6,6 +6,8 @@ import { suppressBusinessEverywhere } from '../outreach/policy.js';
 import { ensureDeal, moveDealStage } from '../sales/deals.js';
 import { createTask } from '../sales/tasks.js';
 import { audit } from '../audit.js';
+import { extractBounceInfo } from './bounce.js';
+import { classifyByRules } from './classify.js';
 
 export interface InboundEmail {
   channel?: 'email' | 'whatsapp';
@@ -37,7 +39,7 @@ export function parseAddress(raw: string): string | null {
 }
 
 /** Gelen mesajı kaydeder, işletmeyle eşler, sınıflandırır ve satış aksiyonlarını üretir. İdempotent. */
-export async function processInbound(db: pg.Pool | pg.PoolClient, ai: AiProvider, msg: InboundEmail): Promise<InboundResult> {
+export async function processInbound(db: pg.Pool | pg.PoolClient, ai: AiProvider, msg: InboundEmail, opts: { replyDomain?: string } = {}): Promise<InboundResult> {
   const from = parseAddress(msg.from) ?? msg.from.toLowerCase();
   const dedup = sha256(`${msg.provider_message_id ?? ''}|${from}|${msg.subject ?? ''}|${msg.text.slice(0, 2000)}|${msg.received_at ?? ''}`);
   const existing = (await db.query('SELECT id, matched_business_id, classification, match_method FROM inbound_messages WHERE dedup_hash = $1', [dedup])).rows[0];
@@ -51,6 +53,14 @@ export async function processInbound(db: pg.Pool | pg.PoolClient, ai: AiProvider
   if (!job) {
     const ids = `${msg.in_reply_to ?? ''} ${msg.references ?? ''}`.match(/<[^>]+>/g) ?? [];
     if (ids.length) { job = (await db.query('SELECT id, business_id, contact_id, to_address FROM send_jobs WHERE message_id = ANY($1)', [ids])).rows[0]; if (job) method = 'message_id'; }
+  }
+  // K4: bounce/DSN postaları From adresine gelir ve In-Reply-To taşımaz; gövdedeki Message-ID veya
+  // Final-Recipient ile ilgili gönderim işi bulunur. Bulunamazsa alıcı yine de engellenir (aşağıda).
+  const preClass = classifyByRules(msg.subject ?? '', msg.text);
+  const bounceInfo = preClass.classification === 'bounce' ? extractBounceInfo(msg.text, opts.replyDomain ?? 'invalid', msg.headers) : null;
+  if (!job && bounceInfo) {
+    if (bounceInfo.messageIds.length) { job = (await db.query('SELECT id, business_id, contact_id, to_address FROM send_jobs WHERE message_id = ANY($1)', [bounceInfo.messageIds])).rows[0]; if (job) method = 'bounce_message_id'; }
+    if (!job && bounceInfo.recipients.length) { job = (await db.query(`SELECT id, business_id, contact_id, to_address FROM send_jobs WHERE lower(to_address) = ANY($1) AND status IN ('accepted','delivered','bounced') ORDER BY created_at DESC LIMIT 1`, [bounceInfo.recipients])).rows[0]; if (job) method = 'bounce_recipient'; }
   }
   let businessId: string | null = job?.business_id ?? null;
   let contactId: string | null = job?.contact_id ?? null;
@@ -100,16 +110,23 @@ export async function processInbound(db: pg.Pool | pg.PoolClient, ai: AiProvider
         await ensureDeal(db, businessId, { stage: 'interested', source: 'reply' });
         await createTask(db, { business_id: businessId, kind: 'review_reply', channel: 'email', title: 'Soru geldi — yanıtla', description: cls.summary, due_at: new Date(Date.now() + 8 * 3600e3), dedup_key: `question:${inboundId}` });
         break;
-      case 'bounce':
-        if (job) { await db.query(`UPDATE send_jobs SET status = 'bounced' WHERE id = $1`, [job.id]); await db.query(`INSERT INTO send_events(send_job_id, event, detail) VALUES ($1,'bounce',$2)`, [job.id, JSON.stringify({ inbound_id: inboundId })]); }
-        await db.query(`INSERT INTO suppressions(kind, value, reason, source) VALUES ('email', $1, 'bounce', 'bounce') ON CONFLICT DO NOTHING`, [job?.to_address ?? from]);
+      case 'bounce': {
+        if (job) { await db.query(`UPDATE send_jobs SET status = 'bounced', last_error = 'bounce' WHERE id = $1`, [job.id]); await db.query(`INSERT INTO send_events(send_job_id, event, detail) VALUES ($1,'bounce',$2)`, [job.id, JSON.stringify({ inbound_id: inboundId, match: method })]); }
+        const targets = new Set<string>([...(bounceInfo?.recipients ?? []), ...(job?.to_address ? [String(job.to_address).toLowerCase()] : [])]);
+        for (const t of targets) await db.query(`INSERT INTO suppressions(kind, value, reason, source) VALUES ('email', $1, 'bounce', 'bounce') ON CONFLICT DO NOTHING`, [t]);
         break;
+      }
       case 'out_of_office':
         await createTask(db, { business_id: businessId, kind: 'follow_up', channel: 'email', title: 'Ofis dışı — 7 gün sonra tekrar', description: cls.summary, due_at: new Date(Date.now() + 7 * 86400e3), dedup_key: `ooo:${inboundId}` });
         break;
       default:
         await createTask(db, { business_id: businessId, kind: 'review_reply', channel: 'email', title: 'Sınıflandırılamayan yanıt — incele', description: cls.summary, dedup_key: `review:${inboundId}` });
     }
+  } else if (cls.classification === 'bounce' || bounceInfo?.isDsn) {
+    // Eşleşmeyen bounce: alıcılar yine de engellenir; gönderen (MAILER-DAEMON) asla engellenmez.
+    const targets = bounceInfo?.recipients ?? [];
+    for (const t of targets) await db.query(`INSERT INTO suppressions(kind, value, reason, source) VALUES ('email', $1, 'bounce (eşleşmeyen DSN)', 'bounce') ON CONFLICT DO NOTHING`, [t]);
+    await createTask(db, { kind: 'review_reply', channel: 'email', title: `Eşleşmeyen bounce: ${targets.join(', ') || from}`, description: (msg.subject ?? '') + '\n' + msg.text.slice(0, 500), dedup_key: `unmatched-bounce:${inboundId}` });
   } else {
     await createTask(db, { kind: 'review_reply', channel: 'email', title: `Eşleşmeyen gelen e-posta: ${from}`, description: (msg.subject ?? '') + '\n' + msg.text.slice(0, 500), dedup_key: `unmatched:${inboundId}` });
   }

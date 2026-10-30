@@ -6,7 +6,25 @@ import type pg from 'pg';
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const MIGRATIONS_DIR = path.resolve(here, '../../../../db/migrations');
 
-export async function runMigrations(pool: pg.Pool, dir: string = MIGRATIONS_DIR): Promise<string[]> {
+export class DatabaseIdentityError extends Error {}
+
+/**
+ * Hedef veritabanı kimliğini doğrular. Kural:
+ *  - Adı 'n8n' içeren bir veritabanında ASLA çalışmaz (mevcut otomasyon DB'si koruması).
+ *  - Ad, beklenen adla (EXPECTED_DB_NAME) birebir eşleşmeli; eşleşmiyorsa durur.
+ * Geçersiz kılma yoktur; doğru hedef için EXPECTED_DB_NAME değiştirilir.
+ */
+export async function assertDatabaseIdentity(db: { query: pg.Pool['query'] }, expectedName: string): Promise<string> {
+  const r = await db.query('SELECT current_database() AS name, current_user AS "user"');
+  const name = String(r.rows[0]?.name ?? '');
+  if (!name) throw new DatabaseIdentityError('Veritabanı adı okunamadı');
+  if (/n8n/i.test(name)) throw new DatabaseIdentityError(`Durduruldu: hedef veritabanı "${name}" n8n'e ait görünüyor. Bu sistem yalnız kendi veritabanında çalışır.`);
+  if (name !== expectedName) throw new DatabaseIdentityError(`Durduruldu: hedef veritabanı "${name}", beklenen "${expectedName}" değil (EXPECTED_DB_NAME).`);
+  return name;
+}
+
+export async function runMigrations(pool: pg.Pool, dir: string = MIGRATIONS_DIR, expectedName?: string): Promise<string[]> {
+  if (expectedName !== undefined) await assertDatabaseIdentity(pool, expectedName);
   await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`);
   const files = (await readdir(dir)).filter((f) => f.endsWith('.sql')).sort();
@@ -35,6 +53,7 @@ export async function runMigrations(pool: pg.Pool, dir: string = MIGRATIONS_DIR)
 /** Yalnızca test veritabanlarında: tüm şemayı sıfırlar. */
 export async function resetDatabase(pool: pg.Pool): Promise<void> {
   const dbName = (await pool.query('SELECT current_database() AS n')).rows[0].n as string;
-  if (!/test/i.test(dbName)) throw new Error(`resetDatabase yalnızca adında 'test' geçen veritabanlarında çalışır (${dbName})`);
+  if (/n8n/i.test(dbName)) throw new DatabaseIdentityError(`resetDatabase n8n veritabanında çalıştırılamaz (${dbName})`);
+  if (!/test/i.test(dbName)) throw new DatabaseIdentityError(`resetDatabase yalnızca adında 'test' geçen veritabanlarında çalışır (${dbName})`);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
 }

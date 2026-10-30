@@ -9,7 +9,7 @@ await seedUsers(pool);
 const ctx = await makeCtx(pool);
 ctx.fetchFn = await mockWebsiteFetch();
 for (const [sector, city] of [['education', 'İstanbul'], ['beauty', 'İstanbul'], ['beauty', 'İzmir'], ['clinic', 'İstanbul'], ['clinic', 'Ankara']]) {
-  await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, fetchFn: ctx.fetchFn }, { sectorKey: sector, city, runId: `e2e-wf1-${sector}-${city}` });
+  await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, fetchFn: ctx.fetchFn, lookup: ctx.lookup }, { sectorKey: sector, city, runId: `e2e-wf1-${sector}-${city}` });
 }
 const p = await runWf2Prepare(pool, ctx.cfg, ctx.ai, { runId: 'e2e-wf2' });
 await runWf3Metrics(pool, { runId: 'e2e-wf3' });

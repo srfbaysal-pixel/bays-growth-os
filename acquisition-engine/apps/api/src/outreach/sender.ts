@@ -20,9 +20,9 @@ const BACKOFF_MIN = [2, 10, 30];
  *  5) sağlayıcıya gönderilir; hata → üstel bekleme ile yeniden dener, limit sonrası failed.
  * Aynı iş için sağlayıcıya ikinci istek yalnız "accepted" dönmemişse yapılır; idempotency anahtarı iş kimliğidir.
  */
-export async function processSendQueue(pool: pg.Pool, cfg: Config, provider: EmailProvider, limit = 10): Promise<SenderStats> {
+export async function processSendQueue(pool: pg.Pool, cfg: Config, provider: EmailProvider, limit = 10, opts: { fetchFn?: typeof fetch } = {}): Promise<SenderStats> {
   const stats: SenderStats = { picked: 0, sent: 0, dry_run: 0, failed: 0, blocked: 0, retried: 0, paused: false, pause_reason: null };
-  const ks = await evaluateKillSwitch(pool, cfg);
+  const ks = await evaluateKillSwitch(pool, cfg, opts);
   if (ks.paused) { stats.paused = true; stats.pause_reason = ks.reason; return stats; }
   const paused = await isOutreachPaused(pool);
   if (paused.paused) { stats.paused = true; stats.pause_reason = paused.reason; return stats; }
@@ -71,10 +71,12 @@ export async function processSendQueue(pool: pg.Pool, cfg: Config, provider: Ema
     const messageId = `<${job.id}@${cfg.EMAIL_REPLY_DOMAIN}>`;
     const replyTo = `reply+${job.reply_token}@${cfg.EMAIL_REPLY_DOMAIN}`;
     if (cfg.DRY_RUN) {
-      await pool.query(`UPDATE send_jobs SET status = 'dry_run', message_id = $2, provider = $3, sent_at = now() WHERE id = $1`, [job.id, messageId, 'dry_run']);
+      // K3: kuru çalışma gerçek gönderim DEĞİLDİR → taslak 'dry_run', sent_at boş, işletme durumu değişmez,
+      // provider_message_id yok. Aynı işletme için sonradan gerçek taslak hazırlanabilir (drafts.ts sıra numarası).
+      await pool.query(`UPDATE send_jobs SET status = 'dry_run', message_id = $2, provider = 'dry_run', sent_at = NULL WHERE id = $1`, [job.id, messageId]);
       await pool.query(`INSERT INTO send_events(send_job_id, event, detail) VALUES ($1,'dry_run',$2)`, [job.id, JSON.stringify({ to: job.to_address, subject: job.subject, reply_to: replyTo })]);
-      await pool.query(`UPDATE message_drafts SET status = 'sent' WHERE id = $1`, [job.draft_id]);
-      await pool.query(`UPDATE businesses SET status = 'contacted' WHERE id = $1 AND status IN ('qualified')`, [job.business_id]);
+      await pool.query(`UPDATE message_drafts SET status = 'dry_run' WHERE id = $1`, [job.draft_id]);
+      await audit(pool, { actorType: 'system', action: 'email_dry_run', entityType: 'send_job', entityId: job.id, after: { to: job.to_address } });
       stats.dry_run++;
       log.info('dry_run gönderim', { job: job.id, to: job.to_address });
       continue;
@@ -105,7 +107,7 @@ export async function processSendQueue(pool: pg.Pool, cfg: Config, provider: Ema
         stats.retried++;
       }
       // Kill-switch'i her hatadan sonra yeniden değerlendir
-      const ks2 = await evaluateKillSwitch(pool, cfg);
+      const ks2 = await evaluateKillSwitch(pool, cfg, opts);
       if (ks2.paused) { stats.paused = true; stats.pause_reason = ks2.reason; break; }
     }
   }

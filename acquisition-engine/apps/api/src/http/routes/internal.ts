@@ -26,7 +26,7 @@ export function internalRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.post('/internal/wf1/run', { preHandler: guard }, async (req) => {
     const body = z.object({ run_id: z.string().min(4).max(100), sector_key: z.string(), city: z.string().min(2).max(60), limit_per_query: z.number().int().min(1).max(20).optional(), target_qualified: z.number().int().min(1).max(200).optional() }).parse(req.body);
-    return runOnce('wf1', body.run_id, () => runWf1(ctx.pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, fetchFn: ctx.fetchFn }, { sectorKey: body.sector_key, city: body.city, limitPerQuery: body.limit_per_query, targetQualified: body.target_qualified, runId: body.run_id }));
+    return runOnce('wf1', body.run_id, () => runWf1(ctx.pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, fetchFn: ctx.fetchFn, lookup: ctx.lookup }, { sectorKey: body.sector_key, city: body.city, limitPerQuery: body.limit_per_query, targetQualified: body.target_qualified, runId: body.run_id }));
   });
 
   app.post('/internal/wf2/prepare', { preHandler: guard }, async (req) => {
@@ -44,7 +44,7 @@ export function internalRoutes(app: FastifyInstance, ctx: AppContext) {
       run_id: z.string().min(4).max(100),
       messages: z.array(z.object({ provider_message_id: z.string().nullable().optional(), from: z.string().min(3), to: z.string().nullable().optional(), subject: z.string().nullable().optional(), text: z.string().default(''), in_reply_to: z.string().nullable().optional(), references: z.string().nullable().optional(), received_at: z.string().nullable().optional(), headers: z.record(z.string(), z.unknown()).nullable().optional() })).max(200)
     }).parse(req.body);
-    return runWf3Inbound(ctx.pool, ctx.ai, { runId: body.run_id, messages: body.messages });
+    return runWf3Inbound(ctx.pool, ctx.ai, { runId: body.run_id, messages: body.messages, replyDomain: ctx.cfg.EMAIL_REPLY_DOMAIN });
   });
 
   app.post('/internal/wf3/metrics', { preHandler: guard }, async (req) => {

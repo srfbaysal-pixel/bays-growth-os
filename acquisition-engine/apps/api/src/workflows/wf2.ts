@@ -17,7 +17,7 @@ export async function runWf2Prepare(pool: pg.Pool, cfg: Config, ai: AiProvider, 
     const rows = (await pool.query(
       `SELECT b.id, b.sector_key FROM businesses b
         WHERE b.status = 'qualified' AND ($1::text IS NULL OR b.sector_key = $1)
-          AND NOT EXISTS (SELECT 1 FROM message_drafts d WHERE d.business_id = b.id)
+          AND NOT EXISTS (SELECT 1 FROM message_drafts d WHERE d.business_id = b.id AND d.status NOT IN ('dry_run','cancelled'))
         ORDER BY b.lead_score DESC, b.created_at LIMIT $2`,
       [params.sectorKey ?? null, params.limit ?? 20]
     )).rows;

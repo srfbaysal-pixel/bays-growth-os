@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const TEST_DB = process.env.DATABASE_URL_TEST ?? 'postgres://bays_acq:bays_acq_dev@127.0.0.1:5432/bays_acq_test';
 const apiEnv = {
-  NODE_ENV: 'test', DATABASE_URL: TEST_DB, API_PORT: '4100', API_HOST: '127.0.0.1', PUBLIC_BASE_URL: 'http://127.0.0.1:4200',
+  NODE_ENV: 'test', DATABASE_URL: TEST_DB, EXPECTED_DB_NAME: 'bays_acq_test', API_PORT: '4100', API_HOST: '127.0.0.1', PUBLIC_BASE_URL: 'http://127.0.0.1:4200',
   SESSION_SECRET: 'e2e-session-secret-e2e-session-secret-0000', N8N_SHARED_SECRET: 'e2e-n8n-shared-secret-0000',
   EMAIL_PROVIDER: 'mock', AI_PROVIDER: 'mock', DISCOVERY_PROVIDER: 'mock', DRY_RUN: 'true', LIVE_OUTREACH_ENABLED: 'false', TEST_RECIPIENTS: 'test@example.com',
   EMAIL_FROM_ADDRESS: 'iletisim@test.invalid', EMAIL_REPLY_DOMAIN: 'test.invalid', LOG_LEVEL: 'error'

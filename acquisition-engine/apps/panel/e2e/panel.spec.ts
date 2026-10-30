@@ -50,8 +50,11 @@ test('özet, leadler, lead detayı, onay akışı, satış, gelir ve sistem sayf
   await page.goto('/approvals');
   const card = page.locator('.card').filter({ has: page.getByRole('button', { name: 'Onayla' }) }).first();
   await expect(card).toBeVisible();
+  const businessName = (await card.locator('.font-semibold').first().textContent())!.trim();
   await card.getByRole('button', { name: 'Onayla' }).click();
-  await expect(card.getByText(/Manuel iletişim görevi açıldı|kuyruğuna alındı/)).toBeVisible();
+  // Onay sonrası liste yenilenir; sonuç "Manuel görev" (test modu, gerçek alıcı) sekmesinde görünmeli
+  await page.getByRole('button', { name: 'Manuel görev' }).click();
+  await expect(page.locator('.card').filter({ hasText: businessName }).first()).toBeVisible();
 
   await page.goto('/conversations');
   await expect(page.getByRole('button', { name: /Görevler/ })).toBeVisible();

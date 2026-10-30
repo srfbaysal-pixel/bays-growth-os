@@ -5,12 +5,12 @@ import { storeDayMetrics, weeklySummary } from '../metrics/daily.js';
 import { heartbeat } from '../health/status.js';
 
 /** WF3-A — Gelen yanıt kümesi (IMAP/webhook) işleme. */
-export async function runWf3Inbound(pool: pg.Pool, ai: AiProvider, params: { runId: string; messages: InboundEmail[] }): Promise<{ results: InboundResult[]; errors: string[] }> {
+export async function runWf3Inbound(pool: pg.Pool, ai: AiProvider, params: { runId: string; messages: InboundEmail[]; replyDomain?: string }): Promise<{ results: InboundResult[]; errors: string[] }> {
   const results: InboundResult[] = [];
   const errors: string[] = [];
   await heartbeat(pool, 'wf3_replies', params.runId, 'running');
   for (const m of params.messages) {
-    try { results.push(await processInbound(pool, ai, m)); }
+    try { results.push(await processInbound(pool, ai, m, { replyDomain: params.replyDomain })); }
     catch (e) { errors.push(`${m.from}: ${(e as Error).message}`); }
   }
   await heartbeat(pool, 'wf3_replies', params.runId, errors.length ? 'partial' : 'succeeded', { processed: results.length, matched: results.filter((r) => r.matched).length, errors: errors.length });

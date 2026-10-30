@@ -18,6 +18,8 @@ export const ConfigSchema = z.object({
 
   DATABASE_URL: z.string().min(1),
   DATABASE_URL_TEST: z.string().optional(),
+  // Migration/seed yalnız bu ada sahip veritabanında çalışır (yanlış DB / n8n DB koruması)
+  EXPECTED_DB_NAME: z.string().min(1).default('bays_acq'),
 
   API_HOST: z.string().default('127.0.0.1'),
   API_PORT: int(4100),
@@ -26,6 +28,11 @@ export const ConfigSchema = z.object({
   SESSION_TTL_HOURS: int(72),
   N8N_SHARED_SECRET: z.string().min(16, 'N8N_SHARED_SECRET en az 16 karakter olmalı'),
   N8N_WEBHOOK_BASE_URL: z.string().optional(),
+  // /internal/* uçlarına erişebilecek kaynak IP/CIDR listesi (HMAC'e ek ağ katmanı)
+  INTERNAL_ALLOWED_IPS: list.pipe(z.array(z.string())).default(['127.0.0.0/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']),
+  // Kill-switch / kritik uyarı bildirimi (opsiyonel, imzalı POST)
+  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  ALERT_EMAIL: z.string().optional(),
   RATE_LIMIT_PER_MINUTE: int(120),
   LOGIN_RATE_LIMIT_PER_15MIN: int(10),
 
@@ -114,7 +121,8 @@ export function testConfig(over: Partial<Config> = {}): Config {
       LIVE_OUTREACH_ENABLED: 'false',
       TEST_RECIPIENTS: 'test@example.com',
       EMAIL_FROM_ADDRESS: 'iletisim@test.invalid',
-      EMAIL_REPLY_DOMAIN: 'test.invalid'
+      EMAIL_REPLY_DOMAIN: 'test.invalid',
+      EXPECTED_DB_NAME: 'bays_acq_test'
     },
     over
   );

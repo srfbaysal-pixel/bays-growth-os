@@ -9,7 +9,9 @@ import { dashboardRoutes } from './routes/dashboard.js';
 import { internalRoutes } from './routes/internal.js';
 
 export function buildServer(ctx: AppContext): FastifyInstance {
-  const app = Fastify({ logger: ctx.cfg.NODE_ENV !== 'test', trustProxy: true, bodyLimit: 2_500_000 });
+  // trustProxy: X-Forwarded-* yalnız loopback ve özel ağdaki proxy'lerden (Caddy / Docker köprüsü) kabul edilir;
+  // API portu yanlışlıkla dışarı açılsa bile istemci IP'si sahte başlıkla değiştirilemez.
+  const app = Fastify({ logger: ctx.cfg.NODE_ENV !== 'test', trustProxy: 'loopback, uniquelocal', bodyLimit: 2_500_000 });
   registerPlugins(app, ctx);
   authRoutes(app, ctx);
   leadRoutes(app, ctx);

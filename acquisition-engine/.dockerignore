@@ -1,0 +1,21 @@
+# K2: Docker derleme bağlamını temizler (ana makine node_modules/.next/.env imaja girmez)
+**/node_modules
+**/.next
+**/dist
+**/test-results
+**/playwright-report
+**/coverage
+**/*.log
+.env
+.env.*
+!.env.example
+backups
+reports
+docs
+n8n
+tools
+deploy/systemd
+deploy/scripts
+.git
+.gitignore
+**/*.tsbuildinfo
