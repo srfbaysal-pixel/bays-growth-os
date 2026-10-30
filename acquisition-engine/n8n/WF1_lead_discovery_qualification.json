@@ -1,0 +1,438 @@
+{
+  "name": "BaysAcq WF1 — Lead Discovery & Qualification",
+  "nodes": [
+    {
+      "id": "dff7c89a-b414-43c2-871c-79f2906f259d",
+      "name": "Her iş günü 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "75fe97e7-b277-4ce7-81e1-cacb0f521ede",
+      "name": "Manuel tetikle",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        220
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "784ae7b4-69df-4d94-857b-a7915b5bb27a",
+      "name": "Sektör × şehir planı",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Pilot: her sektörde 30 nitelikli işletme. Şehir listesini burada düzenleyin.\nconst sectors = ['education', 'beauty', 'clinic'];\nconst cities = ($env.BAYS_PILOT_CITIES || 'İstanbul,Ankara,İzmir').split(',').map(s => s.trim()).filter(Boolean);\nconst targetPerSector = Number($env.BAYS_TARGET_PER_SECTOR || 30);\nconst items = [];\nfor (const sector_key of sectors) for (const city of cities) items.push({ json: { sector_key, city, target_qualified: targetPerSector, limit_per_query: 20 } });\nreturn items;"
+      }
+    },
+    {
+      "id": "01b52f03-83f2-40a7-8ca0-1e7208e584aa",
+      "name": "Sırayla işle",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "649dcd6d-60a7-4210-89d9-4329f8058b4d",
+      "name": "Keşif: gövde",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// İstek gövdesini ve zaman damgasını hazırla (imza: HMAC-SHA256(ts + \".\" + body))\nconst payload = { run_id: 'n8n-' + $execution.id + '-' + $json.sector_key + '-' + $json.city, sector_key: $json.sector_key, city: $json.city, limit_per_query: $json.limit_per_query, target_qualified: $json.target_qualified };\nconst body = JSON.stringify(payload);\nconst ts = String(Math.floor(Date.now() / 1000));\nreturn { json: { body, ts, signInput: ts + '.' + body } };"
+      }
+    },
+    {
+      "id": "be81d2c5-f73a-4fe2-8c8d-83430f6b876b",
+      "name": "Keşif: imza",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signInput }}",
+        "secret": "={{ $env.BAYS_N8N_SHARED_SECRET }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "4e0c56e2-8df3-417e-87fc-ec9056e21612",
+      "name": "Keşif: API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BAYS_API_URL }}/internal/wf1/run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Bays-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-Bays-Signature",
+              "value": "=sha256={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "d7456de4-3222-4ebb-8bcb-94b3869482ad",
+      "name": "Keşif: hata mı?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "bbb918df-a13d-4154-802d-1624357476d9",
+              "leftValue": "={{ $json.error !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "5b600559-2c07-4863-8539-c8e9ffbcb075",
+              "leftValue": "={{ Array.isArray($json.errors) && $json.errors.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a6f26c7b-e1ea-4f84-89a1-92e4a8cd0b64",
+      "name": "Keşif: heartbeat: gövde",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// İstek gövdesini ve zaman damgasını hazırla (imza: HMAC-SHA256(ts + \".\" + body))\nconst payload = { workflow_key: 'wf1_discovery', run_id: 'n8n-' + $execution.id + '-ke-if-err', status: 'failed', error: String($json.error?.message ?? $json.error ?? ($json.errors ?? []).join('; ')).slice(0, 2000) };\nconst body = JSON.stringify(payload);\nconst ts = String(Math.floor(Date.now() / 1000));\nreturn { json: { body, ts, signInput: ts + '.' + body } };"
+      }
+    },
+    {
+      "id": "c6bf7b83-9a45-402b-8d6c-260201ffaef3",
+      "name": "Keşif: heartbeat: imza",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        2080,
+        0
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signInput }}",
+        "secret": "={{ $env.BAYS_N8N_SHARED_SECRET }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "6f306f42-6c71-4f73-878c-0fe34c4c587d",
+      "name": "Keşif: heartbeat: API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2340,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BAYS_API_URL }}/internal/heartbeat",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Bays-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-Bays-Signature",
+              "value": "=sha256={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "b7c32994-c9e2-4613-83df-80404b21ef00",
+      "name": "Özet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        220
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Döngü bitti: tüm sonuçları özetle (panel System Health bunu workflow_runs tablosundan okur)\nreturn [{ json: { finished_at: new Date().toISOString(), runs: $input.all().length } }];"
+      }
+    },
+    {
+      "id": "1f4204ea-27ef-4edb-8458-bb956e3203bc",
+      "name": "Notlar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -360
+      ],
+      "parameters": {
+        "content": "## WF1 — Lead Discovery & Qualification\n\nGerekli n8n ortam değişkenleri: **BAYS_API_URL** (ör. https://acq.bayssystem.com), **BAYS_N8N_SHARED_SECRET** (API .env ile aynı), opsiyonel **BAYS_PILOT_CITIES**, **BAYS_TARGET_PER_SECTOR**.\n\nAkış: sektör×şehir planı → her biri için imzalı POST /internal/wf1/run (keşif + web sitesi gözlemi + AI çıkarımı + puanlama + CRM kaydı; mükerrer önleme API'de).\n\nKeşif sağlayıcısı API .env'de seçilir (DISCOVERY_PROVIDER=mock|google_places|csv). Bu workflow hiçbir mesaj göndermez.",
+        "height": 300,
+        "width": 520
+      }
+    }
+  ],
+  "connections": {
+    "Her iş günü 08:00": {
+      "main": [
+        [
+          {
+            "node": "Sektör × şehir planı",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manuel tetikle": {
+      "main": [
+        [
+          {
+            "node": "Sektör × şehir planı",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sektör × şehir planı": {
+      "main": [
+        [
+          {
+            "node": "Sırayla işle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sırayla işle": {
+      "main": [
+        [
+          {
+            "node": "Özet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keşif: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keşif: gövde": {
+      "main": [
+        [
+          {
+            "node": "Keşif: imza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keşif: imza": {
+      "main": [
+        [
+          {
+            "node": "Keşif: API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keşif: API": {
+      "main": [
+        [
+          {
+            "node": "Keşif: hata mı?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sırayla işle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keşif: hata mı?": {
+      "main": [
+        [
+          {
+            "node": "Keşif: heartbeat: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keşif: heartbeat: gövde": {
+      "main": [
+        [
+          {
+            "node": "Keşif: heartbeat: imza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keşif: heartbeat: imza": {
+      "main": [
+        [
+          {
+            "node": "Keşif: heartbeat: API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "timezone": "Europe/Istanbul"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "bays_acq_version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "bays-acq"
+    }
+  ],
+  "versionId": "a6ee45db-8120-4da3-8631-1726058f05f7"
+}

@@ -1,0 +1,783 @@
+{
+  "name": "BaysAcq WF3 — Reply & Sales Management",
+  "nodes": [
+    {
+      "id": "d11ab954-967f-4146-8b5b-456f08386454",
+      "name": "IMAP: gelen e-posta",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "format": "resolved",
+        "options": {
+          "customEmailConfig": "[\"UNSEEN\"]",
+          "forceReconnect": 60
+        }
+      },
+      "credentials": {
+        "imap": {
+          "id": "REPLACE_WITH_IMAP_CREDENTIAL_ID",
+          "name": "BaysAcq IMAP"
+        }
+      }
+    },
+    {
+      "id": "e2e4f063-4c54-4548-83ce-c62faf6041a1",
+      "name": "E-postayı normalize et",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// IMAP düğümü çıktısını API'nin beklediği şekle çevir. Gövde metni 20k ile sınırlanır.\nconst addr = (v) => { if (!v) return ''; if (typeof v === 'string') return v; if (v.text) return v.text; if (Array.isArray(v.value)) return v.value.map(a => a.address).join(', '); if (v.address) return v.address; return String(v); };\nconst messages = $input.all().map(({ json: m }) => ({\n  provider_message_id: m.messageId || m.id || null,\n  from: addr(m.from),\n  to: addr(m.to) + (m.deliveredTo ? ', ' + addr(m.deliveredTo) : ''),\n  subject: m.subject || '',\n  text: String(m.text || m.textPlain || (m.html ? m.html.replace(/<[^>]+>/g, ' ') : '')).slice(0, 20000),\n  in_reply_to: m.inReplyTo || null,\n  references: Array.isArray(m.references) ? m.references.join(' ') : (m.references || null),\n  received_at: m.date ? new Date(m.date).toISOString() : null,\n  headers: { 'delivered-to': addr(m.deliveredTo || (m.headers && (m.headers['delivered-to'] || m.headers.get?.('delivered-to'))) ) }\n}));\nreturn [{ json: { messages } }];"
+      }
+    },
+    {
+      "id": "ead82d1a-0537-4b80-8291-01cc286658ee",
+      "name": "Yanıtları işle: gövde",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// İstek gövdesini ve zaman damgasını hazırla (imza: HMAC-SHA256(ts + \".\" + body))\nconst payload = { run_id: 'n8n-' + $execution.id + '-inbound', messages: $json.messages };\nconst body = JSON.stringify(payload);\nconst ts = String(Math.floor(Date.now() / 1000));\nreturn { json: { body, ts, signInput: ts + '.' + body } };"
+      }
+    },
+    {
+      "id": "47026ea2-c5ad-4760-8372-13df7e937e11",
+      "name": "Yanıtları işle: imza",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signInput }}",
+        "secret": "={{ $env.BAYS_N8N_SHARED_SECRET }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "4b10fa7f-e7dc-447d-854b-e048bcee384d",
+      "name": "Yanıtları işle: API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BAYS_API_URL }}/internal/wf3/inbound",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Bays-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-Bays-Signature",
+              "value": "=sha256={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "17e0ed2d-4834-4e2b-8e3a-5e38ff90c48e",
+      "name": "Yanıtları işle: hata mı?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "22a4b88a-cd83-4025-8b1f-ea3192e0658b",
+              "leftValue": "={{ $json.error !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "cd3cecda-4735-494d-818c-985a94e83254",
+              "leftValue": "={{ Array.isArray($json.errors) && $json.errors.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d03068b1-463c-4555-834d-dd352d746194",
+      "name": "Yanıtları işle: heartbeat: gövde",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// İstek gövdesini ve zaman damgasını hazırla (imza: HMAC-SHA256(ts + \".\" + body))\nconst payload = { workflow_key: 'wf3_replies', run_id: 'n8n-' + $execution.id + '-yan-tlar-i-le-err', status: 'failed', error: String($json.error?.message ?? $json.error ?? ($json.errors ?? []).join('; ')).slice(0, 2000) };\nconst body = JSON.stringify(payload);\nconst ts = String(Math.floor(Date.now() / 1000));\nreturn { json: { body, ts, signInput: ts + '.' + body } };"
+      }
+    },
+    {
+      "id": "4916f67c-4859-419a-80f2-45261e480a92",
+      "name": "Yanıtları işle: heartbeat: imza",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        1820,
+        0
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signInput }}",
+        "secret": "={{ $env.BAYS_N8N_SHARED_SECRET }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "49602c86-7a17-49f7-8494-b0de67950d1f",
+      "name": "Yanıtları işle: heartbeat: API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2080,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BAYS_API_URL }}/internal/heartbeat",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Bays-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-Bays-Signature",
+              "value": "=sha256={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "e24decb6-fcab-4415-8344-0f7ce5007206",
+      "name": "Her gün 23:50 metrik",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        660
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "50 23 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "902eda7b-ed6e-4370-8762-cb5aeb9debe4",
+      "name": "Pazartesi 07:30 haftalık",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        880
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 7 * * 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cf8b8ddd-00c0-44a0-8581-acbf8aae8d2b",
+      "name": "Günlük parametre",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        660
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d152b48f-aed7-42e1-803d-6d902007535f",
+              "name": "weekly",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f1fa2013-bfea-4f37-8138-c06974733dcc",
+      "name": "Haftalık parametre",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        880
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2431041e-652b-42cb-8114-78f78fd65835",
+              "name": "weekly",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "4546960f-984e-4ca6-8c58-65e46f13b18c",
+      "name": "Metrikleri hesapla: gövde",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        660
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// İstek gövdesini ve zaman damgasını hazırla (imza: HMAC-SHA256(ts + \".\" + body))\nconst payload = { run_id: 'n8n-' + $execution.id + '-metrics', weekly: $json.weekly === true };\nconst body = JSON.stringify(payload);\nconst ts = String(Math.floor(Date.now() / 1000));\nreturn { json: { body, ts, signInput: ts + '.' + body } };"
+      }
+    },
+    {
+      "id": "2d53e085-daae-42a4-8a7b-f4ded9432639",
+      "name": "Metrikleri hesapla: imza",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        780,
+        660
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signInput }}",
+        "secret": "={{ $env.BAYS_N8N_SHARED_SECRET }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "21b7f5ca-f65a-4591-889d-a5f33ea2a564",
+      "name": "Metrikleri hesapla: API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        660
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BAYS_API_URL }}/internal/wf3/metrics",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Bays-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-Bays-Signature",
+              "value": "=sha256={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "e4b22b67-a829-4df4-8afe-438b45945a5f",
+      "name": "Metrikleri hesapla: hata mı?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1300,
+        660
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "aa48aa8e-0591-4c7c-8354-53660b08915b",
+              "leftValue": "={{ $json.error !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "1546817a-0ed3-4bf2-8d14-7ecfab426952",
+              "leftValue": "={{ Array.isArray($json.errors) && $json.errors.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "81739544-089d-43bb-807c-515e5c3bc89e",
+      "name": "Metrikleri hesapla: heartbeat: gövde",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        660
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// İstek gövdesini ve zaman damgasını hazırla (imza: HMAC-SHA256(ts + \".\" + body))\nconst payload = { workflow_key: 'wf3_metrics', run_id: 'n8n-' + $execution.id + '-metrikleri-hesapla-err', status: 'failed', error: String($json.error?.message ?? $json.error ?? ($json.errors ?? []).join('; ')).slice(0, 2000) };\nconst body = JSON.stringify(payload);\nconst ts = String(Math.floor(Date.now() / 1000));\nreturn { json: { body, ts, signInput: ts + '.' + body } };"
+      }
+    },
+    {
+      "id": "ba98e5bc-23dc-4730-861a-6b19b3f811aa",
+      "name": "Metrikleri hesapla: heartbeat: imza",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        1820,
+        660
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signInput }}",
+        "secret": "={{ $env.BAYS_N8N_SHARED_SECRET }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "586af92c-64b9-414e-899e-a9cdbcac9aef",
+      "name": "Metrikleri hesapla: heartbeat: API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2080,
+        660
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BAYS_API_URL }}/internal/heartbeat",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Bays-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-Bays-Signature",
+              "value": "=sha256={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "f6667203-d7a9-4271-8827-908d90d618dc",
+      "name": "Haftalık rapor (bildirim kanalınıza bağlayın)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        880
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "0312872f-9139-494d-8182-b30466e9fc7e",
+      "name": "Notlar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -420
+      ],
+      "parameters": {
+        "content": "## WF3 — Reply & Sales Management\n\n**A) Gelen yanıtlar**: IMAP tetikleyicisi (kimlik bilgisini n8n'de oluşturup bu düğüme bağlayın) → normalize → imzalı POST /internal/wf3/inbound. API: reply+token / Message-ID / kişi e-postası ile işletme eşleştirme, sınıflandırma (ilgi/ret/soru/görüşme/ofis dışı/bounce), ret → tüm kanallarda engelleme, fırsat + takip görevleri.\n\nIMAP bağlı değilken panel → Conversations → \"Yanıt gir\" ile manuel giriş yapılabilir.\n\n**B) Metrikler**: günlük 23:50 ve haftalık Pazartesi 07:30 → /internal/wf3/metrics (daily_metrics tablosu; panel Dashboard/Revenue buradan ve canlı sorgulardan okur).\n\nResend/WhatsApp teslimat webhook'ları doğrudan API'ye gider (/webhooks/...), n8n gerekmez.",
+        "height": 380,
+        "width": 600
+      }
+    }
+  ],
+  "connections": {
+    "IMAP: gelen e-posta": {
+      "main": [
+        [
+          {
+            "node": "E-postayı normalize et",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-postayı normalize et": {
+      "main": [
+        [
+          {
+            "node": "Yanıtları işle: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yanıtları işle: gövde": {
+      "main": [
+        [
+          {
+            "node": "Yanıtları işle: imza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yanıtları işle: imza": {
+      "main": [
+        [
+          {
+            "node": "Yanıtları işle: API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yanıtları işle: API": {
+      "main": [
+        [
+          {
+            "node": "Yanıtları işle: hata mı?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yanıtları işle: hata mı?": {
+      "main": [
+        [
+          {
+            "node": "Yanıtları işle: heartbeat: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yanıtları işle: heartbeat: gövde": {
+      "main": [
+        [
+          {
+            "node": "Yanıtları işle: heartbeat: imza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yanıtları işle: heartbeat: imza": {
+      "main": [
+        [
+          {
+            "node": "Yanıtları işle: heartbeat: API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Her gün 23:50 metrik": {
+      "main": [
+        [
+          {
+            "node": "Günlük parametre",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pazartesi 07:30 haftalık": {
+      "main": [
+        [
+          {
+            "node": "Haftalık parametre",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Günlük parametre": {
+      "main": [
+        [
+          {
+            "node": "Metrikleri hesapla: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrikleri hesapla: gövde": {
+      "main": [
+        [
+          {
+            "node": "Metrikleri hesapla: imza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrikleri hesapla: imza": {
+      "main": [
+        [
+          {
+            "node": "Metrikleri hesapla: API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Haftalık parametre": {
+      "main": [
+        [
+          {
+            "node": "Metrikleri hesapla: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrikleri hesapla: API": {
+      "main": [
+        [
+          {
+            "node": "Metrikleri hesapla: hata mı?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Haftalık rapor (bildirim kanalınıza bağlayın)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrikleri hesapla: hata mı?": {
+      "main": [
+        [
+          {
+            "node": "Metrikleri hesapla: heartbeat: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrikleri hesapla: heartbeat: gövde": {
+      "main": [
+        [
+          {
+            "node": "Metrikleri hesapla: heartbeat: imza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrikleri hesapla: heartbeat: imza": {
+      "main": [
+        [
+          {
+            "node": "Metrikleri hesapla: heartbeat: API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "timezone": "Europe/Istanbul"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "bays_acq_version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "bays-acq"
+    }
+  ],
+  "versionId": "a8c00760-4e0d-4749-8cad-c47911a513e9"
+}

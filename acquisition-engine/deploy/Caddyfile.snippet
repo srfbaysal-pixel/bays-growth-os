@@ -1,0 +1,33 @@
+# Mevcut Caddyfile'a EKLENECEK blok (mevcut site bloklarını değiştirmeyin).
+# acq.bayssystem.com → panel (4200) ve API (4100). HTTPS Caddy tarafından otomatik.
+acq.bayssystem.com {
+    encode zstd gzip
+
+    # API ve webhook yolları doğrudan API'ye
+    handle /api/* {
+        reverse_proxy 127.0.0.1:4100
+    }
+    handle /webhooks/* {
+        reverse_proxy 127.0.0.1:4100
+    }
+    # n8n'in çağırdığı iç uçlar: HMAC imzalı. İsteğe bağlı olarak yalnız sunucu içi/Docker ağına kısıtlayın:
+    @internal path /internal/*
+    handle @internal {
+        # remote_ip 127.0.0.1 ::1 172.16.0.0/12 10.0.0.0/8   ← n8n'in çıkış IP'sine göre açın
+        reverse_proxy 127.0.0.1:4100
+    }
+
+    # Geri kalan her şey Next.js paneli
+    handle {
+        reverse_proxy 127.0.0.1:4200
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options nosniff
+        -Server
+    }
+    log {
+        output file /var/log/caddy/acq.bayssystem.com.log
+    }
+}

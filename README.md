@@ -6,6 +6,10 @@ A TypeScript application coordinating five specialist AI roles around research, 
 
 **Status: development implementation with reported simulation tests. Live integrations have not been verified.**
 
+## Customer Acquisition Engine V1 (yeni)
+
+Üç sektörde (eğitim, güzellik, klinik) müşteri keşfi, onay kontrollü iletişim ve satış takibi yapan, telefondan yönetilebilen yeni sistem `acquisition-engine/` klasöründedir ve yukarıdaki arşivden bağımsızdır. Başlangıç: [acquisition-engine/README.md](acquisition-engine/README.md) · Durum: [acquisition-engine/IMPLEMENTATION_STATUS.md](acquisition-engine/IMPLEMENTATION_STATUS.md).
+
 ## Five specialist roles
 
 | Role | Responsibility |

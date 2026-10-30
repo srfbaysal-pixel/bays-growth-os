@@ -1,0 +1,21 @@
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY apps/api/package*.json ./
+RUN npm ci
+COPY apps/api/tsconfig*.json ./
+COPY apps/api/src ./src
+RUN npm run build && npm prune --omit=dev
+
+FROM node:22-alpine
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY apps/api/package.json ./
+COPY apps/api/fixtures ./fixtures
+# dist/db/migrate.js → ../../../../db/migrations = /db/migrations ; dist/sectors → /config/sectors
+COPY db /db
+COPY config /config
+USER node
+EXPOSE 4100
+CMD ["node", "dist/index.js"]

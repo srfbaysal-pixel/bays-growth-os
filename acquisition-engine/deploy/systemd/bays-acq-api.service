@@ -1,0 +1,23 @@
+# Docker kullanmadan doğrudan Node ile çalıştırma seçeneği.
+# Kurulum: /opt/bays-acq altına klonlayın, `npm --prefix apps/api ci && npm --prefix apps/api run build`
+[Unit]
+Description=BaysSystems Acquisition API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=bays
+WorkingDirectory=/opt/bays-acq/acquisition-engine/apps/api
+EnvironmentFile=/opt/bays-acq/acquisition-engine/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+MemoryMax=300M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/bays-acq/acquisition-engine/apps/api
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,47 @@
+# BaysSystems Acquisition Engine — izole dağıtım.
+# Mevcut n8n/Caddy/Postgres servislerine DOKUNMAZ; ayrı ağ ve ayrı veritabanı kullanır.
+# İki seçenek:
+#   A) Mevcut Postgres'te yeni DB (önerilen, en az kaynak): .env'de DATABASE_URL'i mevcut sunucuya verin,
+#      "db" profilini başlatmayın (docker compose up -d api panel).
+#   B) Ayrı Postgres konteyneri: docker compose --profile db up -d
+name: bays-acq
+services:
+  db:
+    image: postgres:16-alpine
+    profiles: ["db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bays_acq
+      POSTGRES_USER: bays_acq
+      POSTGRES_PASSWORD: ${BAYS_ACQ_DB_PASSWORD:?BAYS_ACQ_DB_PASSWORD gerekli}
+    volumes:
+      - bays_acq_pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    deploy: { resources: { limits: { memory: 256M } } }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U bays_acq -d bays_acq"], interval: 10s, timeout: 5s, retries: 10 }
+
+  api:
+    build: { context: ., dockerfile: deploy/Dockerfile.api }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      API_HOST: 0.0.0.0
+      AUTO_MIGRATE: "true"
+    ports:
+      - "127.0.0.1:4100:4100"
+    deploy: { resources: { limits: { memory: 256M } } }
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4100/api/health"], interval: 30s, timeout: 5s, retries: 5 }
+
+  panel:
+    build: { context: ., dockerfile: deploy/Dockerfile.panel, args: { API_INTERNAL_URL: http://api:4100 } }
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:4100
+    ports:
+      - "127.0.0.1:4200:4200"
+    depends_on: [api]
+    deploy: { resources: { limits: { memory: 256M } } }
+
+volumes:
+  bays_acq_pgdata: {}

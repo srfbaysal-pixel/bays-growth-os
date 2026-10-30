@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --brand: #1d4ed8;
+  --brand-soft: #dbeafe;
+  --ok: #15803d;
+  --warn: #b45309;
+  --bad: #b91c1c;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0b1220; --card: #111a2e; --text: #e5e7eb; --muted: #94a3b8; --border: #1f2a44; --brand: #60a5fa; --brand-soft: #1e3a8a; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; }
+}
+html { background: var(--bg); color: var(--text); -webkit-tap-highlight-color: transparent; }
+body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; min-height: 100dvh; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+.muted { color: var(--muted); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: 12px; font-weight: 600; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+.btn:disabled { opacity: .5; }
+.btn-primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+.btn-danger { background: var(--bad); color: #fff; border-color: var(--bad); }
+.btn-sm { min-height: 36px; padding: 0 12px; font-size: 14px; }
+.input { width: 100%; min-height: 44px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 16px; }
+textarea.input { min-height: 160px; line-height: 1.45; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--brand-soft); color: var(--text); }
+.badge-ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.badge-warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.badge-bad { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat b { font-size: 26px; line-height: 1.1; }
+.stat span { font-size: 12px; color: var(--muted); }
+.navlink { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--muted); padding: 8px 4px; flex: 1; }
+.navlink.active { color: var(--brand); font-weight: 700; }
+pre.msg { white-space: pre-wrap; font-family: inherit; font-size: 15px; line-height: 1.5; }

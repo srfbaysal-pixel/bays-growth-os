@@ -1,0 +1,729 @@
+{
+  "name": "BaysAcq WF2 — Outreach Preparation & Approval",
+  "nodes": [
+    {
+      "id": "306e39fc-2248-4565-80f1-dd334789e08e",
+      "name": "İş günleri 09-18 her 2 saat",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9-18/2 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "273cf5c3-8401-4b8a-8262-11d40ceefcc7",
+      "name": "Manuel tetikle",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        220
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "fe1cbaae-1518-4236-8bde-51aaf852b9cc",
+      "name": "Başlat",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "db6d95db-1ad1-438e-8275-1d29e9bb7c6e",
+              "name": "limit",
+              "value": "={{ Number($env.BAYS_WF2_PREPARE_LIMIT || 20) }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "da5c5433-9b9f-4794-85eb-1b8eca6924f4",
+      "name": "Taslak hazırla: gövde",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// İstek gövdesini ve zaman damgasını hazırla (imza: HMAC-SHA256(ts + \".\" + body))\nconst payload = { run_id: 'n8n-' + $execution.id + '-prepare', limit: $json.limit };\nconst body = JSON.stringify(payload);\nconst ts = String(Math.floor(Date.now() / 1000));\nreturn { json: { body, ts, signInput: ts + '.' + body } };"
+      }
+    },
+    {
+      "id": "0600248b-6d69-47d1-8f90-4a75f433b897",
+      "name": "Taslak hazırla: imza",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signInput }}",
+        "secret": "={{ $env.BAYS_N8N_SHARED_SECRET }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "1a1bbe66-35b6-454d-82be-cad1da905a43",
+      "name": "Taslak hazırla: API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BAYS_API_URL }}/internal/wf2/prepare",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Bays-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-Bays-Signature",
+              "value": "=sha256={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "c11e37b5-1519-46a8-83f8-424bd837a164",
+      "name": "Taslak hazırla: hata mı?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "a04f6c90-a52f-435e-833d-933a419b881e",
+              "leftValue": "={{ $json.error !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "55aa746b-dbea-4a4c-89e6-5a40b9931c62",
+              "leftValue": "={{ Array.isArray($json.errors) && $json.errors.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f5d15707-5e6e-44fd-89fd-9274f4d69c6f",
+      "name": "Taslak hazırla: heartbeat: gövde",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// İstek gövdesini ve zaman damgasını hazırla (imza: HMAC-SHA256(ts + \".\" + body))\nconst payload = { workflow_key: 'wf2_outreach', run_id: 'n8n-' + $execution.id + '-taslak-haz-rla-err', status: 'failed', error: String($json.error?.message ?? $json.error ?? ($json.errors ?? []).join('; ')).slice(0, 2000) };\nconst body = JSON.stringify(payload);\nconst ts = String(Math.floor(Date.now() / 1000));\nreturn { json: { body, ts, signInput: ts + '.' + body } };"
+      }
+    },
+    {
+      "id": "8eb3c7b3-6cba-4c8d-87f8-3a05a047101f",
+      "name": "Taslak hazırla: heartbeat: imza",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        1820,
+        0
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signInput }}",
+        "secret": "={{ $env.BAYS_N8N_SHARED_SECRET }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "72ea87e9-f6dc-405c-8285-6cf3cdeaeff9",
+      "name": "Taslak hazırla: heartbeat: API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2080,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BAYS_API_URL }}/internal/heartbeat",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Bays-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-Bays-Signature",
+              "value": "=sha256={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "5e767223-fa3f-4222-8b67-4484e3bce415",
+      "name": "Onaylıları gönder: gövde",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2340,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// İstek gövdesini ve zaman damgasını hazırla (imza: HMAC-SHA256(ts + \".\" + body))\nconst payload = { run_id: 'n8n-' + $execution.id + '-send', limit: Number($env.BAYS_WF2_SEND_LIMIT || 10) };\nconst body = JSON.stringify(payload);\nconst ts = String(Math.floor(Date.now() / 1000));\nreturn { json: { body, ts, signInput: ts + '.' + body } };"
+      }
+    },
+    {
+      "id": "2651a737-fd4e-4a2d-8242-6bd0d0c462d7",
+      "name": "Onaylıları gönder: imza",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        2600,
+        0
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signInput }}",
+        "secret": "={{ $env.BAYS_N8N_SHARED_SECRET }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "a965e129-ed50-477d-8098-9718dac92700",
+      "name": "Onaylıları gönder: API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BAYS_API_URL }}/internal/wf2/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Bays-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-Bays-Signature",
+              "value": "=sha256={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "7ca3e142-bdc0-4004-87a0-f7a10900fd9b",
+      "name": "Onaylıları gönder: hata mı?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3120,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "1360f192-e006-45fa-8820-c95bc05be6bc",
+              "leftValue": "={{ $json.error !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "fafd919b-c8c4-4f71-853f-fa53d9d5f13f",
+              "leftValue": "={{ Array.isArray($json.errors) && $json.errors.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2a894662-20bc-490d-8e40-25e04334e025",
+      "name": "Onaylıları gönder: heartbeat: gövde",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3380,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// İstek gövdesini ve zaman damgasını hazırla (imza: HMAC-SHA256(ts + \".\" + body))\nconst payload = { workflow_key: 'wf2_sender', run_id: 'n8n-' + $execution.id + '-onayl-lar-g-nder-err', status: 'failed', error: String($json.error?.message ?? $json.error ?? ($json.errors ?? []).join('; ')).slice(0, 2000) };\nconst body = JSON.stringify(payload);\nconst ts = String(Math.floor(Date.now() / 1000));\nreturn { json: { body, ts, signInput: ts + '.' + body } };"
+      }
+    },
+    {
+      "id": "b5f45e56-bd66-48c9-8055-2be6184aa24e",
+      "name": "Onaylıları gönder: heartbeat: imza",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        3640,
+        0
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signInput }}",
+        "secret": "={{ $env.BAYS_N8N_SHARED_SECRET }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "54f30856-3fc4-43a1-87ec-a7ac53e103ad",
+      "name": "Onaylıları gönder: heartbeat: API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3900,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BAYS_API_URL }}/internal/heartbeat",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Bays-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-Bays-Signature",
+              "value": "=sha256={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "ad3ea96a-8ed8-4c6e-847c-c318e68ee622",
+      "name": "Gönderim durdu mu?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4160,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "47207350-1c33-4ec7-81c7-ccfca27425aa",
+              "leftValue": "={{ $json.paused === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "880388f2-f4c6-41b9-80c5-37943424eda1",
+      "name": "Durdurma uyarısı (e-posta/WhatsApp bağlayın)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        4420,
+        220
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "125e6763-1e3d-46d9-8f51-02616f666c3e",
+      "name": "Notlar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -400
+      ],
+      "parameters": {
+        "content": "## WF2 — Outreach Preparation & Approval\n\n1) **/internal/wf2/prepare**: nitelikli lead'ler için hizmet önerisi + yalnız doğrulanmış kanıta dayalı taslak + doğrulama + kanal politikası → **onay kuyruğu** (panel → Approvals).\n2) **/internal/wf2/send**: yalnız panelde **insan onayı** almış ve politikası auto_send olan işleri gönderir. DRY_RUN=true iken sağlayıcıya gitmez. Kota/bounce/ardışık hata eşiklerinde gönderim durur (kill-switch) ve `paused=true` döner.\n\nOnay/ret/düzenleme panelde yapılır; n8n bu kararları vermez. Gönderim yetkisi yoksa API manuel iletişim görevi açar.\n\n\"Durdurma uyarısı\" düğümünü kendi bildirim kanalınıza (e-posta/WhatsApp) bağlayın.",
+        "height": 340,
+        "width": 560
+      }
+    }
+  ],
+  "connections": {
+    "İş günleri 09-18 her 2 saat": {
+      "main": [
+        [
+          {
+            "node": "Başlat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manuel tetikle": {
+      "main": [
+        [
+          {
+            "node": "Başlat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Başlat": {
+      "main": [
+        [
+          {
+            "node": "Taslak hazırla: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Taslak hazırla: gövde": {
+      "main": [
+        [
+          {
+            "node": "Taslak hazırla: imza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Taslak hazırla: imza": {
+      "main": [
+        [
+          {
+            "node": "Taslak hazırla: API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Taslak hazırla: API": {
+      "main": [
+        [
+          {
+            "node": "Taslak hazırla: hata mı?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Onaylıları gönder: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Taslak hazırla: hata mı?": {
+      "main": [
+        [
+          {
+            "node": "Taslak hazırla: heartbeat: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Taslak hazırla: heartbeat: gövde": {
+      "main": [
+        [
+          {
+            "node": "Taslak hazırla: heartbeat: imza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Taslak hazırla: heartbeat: imza": {
+      "main": [
+        [
+          {
+            "node": "Taslak hazırla: heartbeat: API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Onaylıları gönder: gövde": {
+      "main": [
+        [
+          {
+            "node": "Onaylıları gönder: imza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Onaylıları gönder: imza": {
+      "main": [
+        [
+          {
+            "node": "Onaylıları gönder: API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Onaylıları gönder: API": {
+      "main": [
+        [
+          {
+            "node": "Onaylıları gönder: hata mı?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gönderim durdu mu?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Onaylıları gönder: hata mı?": {
+      "main": [
+        [
+          {
+            "node": "Onaylıları gönder: heartbeat: gövde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Onaylıları gönder: heartbeat: gövde": {
+      "main": [
+        [
+          {
+            "node": "Onaylıları gönder: heartbeat: imza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Onaylıları gönder: heartbeat: imza": {
+      "main": [
+        [
+          {
+            "node": "Onaylıları gönder: heartbeat: API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gönderim durdu mu?": {
+      "main": [
+        [
+          {
+            "node": "Durdurma uyarısı (e-posta/WhatsApp bağlayın)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "timezone": "Europe/Istanbul"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "bays_acq_version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "bays-acq"
+    }
+  ],
+  "versionId": "ad10412f-43b6-4afc-878f-c586a045dc3e"
+}
