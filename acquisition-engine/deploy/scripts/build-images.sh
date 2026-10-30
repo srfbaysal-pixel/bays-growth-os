@@ -2,8 +2,8 @@
 # K2: Düşük RAM'li sunucu için imaj derleme yardımcısı.
 # Varsayılan: imajları BU makinede sırayla derler (her derleme öncesi boş RAM+swap kontrolü).
 # --export: imajları tar olarak dışa aktarır (başka makinede derleyip sunucuya taşımak için):
-#   build makinesi:  deploy/scripts/build-images.sh --export /tmp/bays-acq-images.tar
-#   sunucu:          docker load -i bays-acq-images.tar && docker compose up -d api panel
+#   build makinesi:  deploy/scripts/build-images.sh --export /tmp/bays-acq-v1-images.tar
+#   sunucu:          docker load -i bays-acq-v1-images.tar && docker compose up -d api panel
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 MIN_FREE_MB="${MIN_FREE_MB:-1500}"
@@ -21,7 +21,7 @@ check_mem; echo "== API imajı"; docker compose build api
 check_mem; echo "== Panel imajı"; docker compose build panel
 if [ "${1:-}" = "--export" ]; then
   OUT="${2:?çıktı dosyası gerekli}"
-  docker save -o "$OUT" bays-acq-api bays-acq-panel
+  docker save -o "$OUT" bays-acq-v1-api:latest bays-acq-v1-panel:latest
   echo "Dışa aktarıldı: $OUT ($(du -h "$OUT" | cut -f1))"
 fi
 echo "Tamam. Başlatmak için: docker compose up -d api panel"

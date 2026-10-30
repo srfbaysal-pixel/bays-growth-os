@@ -17,7 +17,7 @@ afterAll(closeTestPool);
 describe('WF1 keşif', () => {
   it('mock kaynaktan keşif, web sitesi gözlemi, çıkarım ve puanlama; mükerrerler birleşir', async () => {
     const ctx = await makeCtx(pool);
-    const s = await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, fetchFn: ctx.fetchFn, lookup: ctx.lookup }, { sectorKey: 'education', city: 'İstanbul', runId: 'wf1-test-1' });
+    const s = await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, lookup: ctx.lookup, transport: ctx.transport }, { sectorKey: 'education', city: 'İstanbul', runId: 'wf1-test-1' });
     expect(s.found).toBeGreaterThan(0);
     expect(s.created).toBe(2); // Mavi Dil + Zirve (Mavi Dil Ltd. Şti. birleşir)
     expect(s.merged).toBe(0);
@@ -34,17 +34,17 @@ describe('WF1 keşif', () => {
     const run = (await pool.query(`SELECT status, stats FROM workflow_runs WHERE run_id = 'wf1-test-1'`)).rows[0];
     expect(run.status).toBe('succeeded');
     // Tekrar çalıştırma: yeni kayıt oluşmaz
-    const s2 = await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, fetchFn: ctx.fetchFn, lookup: ctx.lookup }, { sectorKey: 'education', city: 'İstanbul', runId: 'wf1-test-2' });
+    const s2 = await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, lookup: ctx.lookup, transport: ctx.transport }, { sectorKey: 'education', city: 'İstanbul', runId: 'wf1-test-2' });
     expect(s2.created).toBe(0);
     expect(Number((await pool.query(`SELECT COUNT(*) n FROM businesses WHERE sector_key = 'education'`)).rows[0].n)).toBe(2);
   });
   it('klinikte hariç tutma çalışır; kaynak hatası partial durum üretir', async () => {
     const ctx = await makeCtx(pool);
-    const s = await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, fetchFn: ctx.fetchFn, lookup: ctx.lookup }, { sectorKey: 'clinic', city: 'Ankara', runId: 'wf1-clinic' });
+    const s = await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, lookup: ctx.lookup, transport: ctx.transport }, { sectorKey: 'clinic', city: 'Ankara', runId: 'wf1-clinic' });
     expect(s.excluded).toBeGreaterThanOrEqual(1);
     expect((await pool.query(`SELECT 1 FROM businesses WHERE name LIKE '%Devlet Hastanesi%'`)).rowCount).toBe(0);
     const failing = { key: 'fail', search: async () => { throw new Error('API down'); } };
-    const f = await runWf1(pool, ctx.cfg, { discovery: failing, ai: ctx.ai, fetchFn: ctx.fetchFn, lookup: ctx.lookup }, { sectorKey: 'beauty', city: 'İzmir', runId: 'wf1-fail' });
+    const f = await runWf1(pool, ctx.cfg, { discovery: failing, ai: ctx.ai, lookup: ctx.lookup, transport: ctx.transport }, { sectorKey: 'beauty', city: 'İzmir', runId: 'wf1-fail' });
     expect(f.errors.length).toBeGreaterThan(0);
     expect((await pool.query(`SELECT status FROM workflow_runs WHERE run_id = 'wf1-fail'`)).rows[0].status).toBe('partial');
     const bad = await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai }, { sectorKey: 'yok', city: 'x', runId: 'wf1-bad' });
@@ -56,8 +56,8 @@ describe('WF1 keşif', () => {
 describe('WF2 hazırlık ve gönderim, WF3 metrik', () => {
   it('nitelikli lead’ler için taslak; onay olmadan gönderim yok; DRY_RUN gönderimi', async () => {
     const ctx = await makeCtx(pool);
-    await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, fetchFn: ctx.fetchFn, lookup: ctx.lookup }, { sectorKey: 'beauty', city: 'İstanbul', runId: 'wf1-b' });
-    await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, fetchFn: ctx.fetchFn, lookup: ctx.lookup }, { sectorKey: 'beauty', city: 'İzmir', runId: 'wf1-b2' });
+    await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, lookup: ctx.lookup, transport: ctx.transport }, { sectorKey: 'beauty', city: 'İstanbul', runId: 'wf1-b' });
+    await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, lookup: ctx.lookup, transport: ctx.transport }, { sectorKey: 'beauty', city: 'İzmir', runId: 'wf1-b2' });
     const p = await runWf2Prepare(pool, ctx.cfg, ctx.ai, { runId: 'wf2-p1' });
     expect(p.candidates).toBeGreaterThan(0);
     expect(p.pending_approval).toBe(p.prepared);
@@ -122,7 +122,7 @@ describe('teklif, abonelik, referans kampanyası', () => {
   });
   it('klinik kampanyası mevzuat onayı olmadan yayınlanamaz ve indirim hakkı doğmaz', async () => {
     const ctx = await makeCtx(pool);
-    await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, fetchFn: ctx.fetchFn, lookup: ctx.lookup }, { sectorKey: 'clinic', city: 'İstanbul', runId: 'wf1-c' });
+    await runWf1(pool, ctx.cfg, { discovery: ctx.discovery, ai: ctx.ai, lookup: ctx.lookup, transport: ctx.transport }, { sectorKey: 'clinic', city: 'İstanbul', runId: 'wf1-c' });
     const b = (await pool.query(`SELECT id FROM businesses WHERE sector_key = 'clinic' LIMIT 1`)).rows[0];
     const rc = await createReferralCampaign(pool, { business_id: b.id });
     expect((await pool.query('SELECT compliance_status FROM referral_campaigns WHERE id = $1', [rc])).rows[0].compliance_status).toBe('pending');

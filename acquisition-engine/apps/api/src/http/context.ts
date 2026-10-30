@@ -13,6 +13,7 @@ export interface AppContext {
   discovery: DiscoveryProvider;
   fetchFn?: typeof fetch;
   lookup?: (hostname: string) => Promise<string[]>;
+  transport?: import('../discovery/safeFetch.js').Transport;
 }
 
 declare module 'fastify' {

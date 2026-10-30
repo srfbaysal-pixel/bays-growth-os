@@ -5,7 +5,6 @@ import path from 'node:path';
 import { freshDb, closeTestPool, makeCtx, seedUsers, testPool } from './helpers.js';
 import { assertDatabaseIdentity, DatabaseIdentityError, runMigrations, resetDatabase } from '../src/db/migrate.js';
 import { ipInCidr, isPrivateAddress, normalizeIp } from '../src/lib/ip.js';
-import { assertSafeUrl, safeFetch, fetchWebsiteFacts, SsrfBlockedError } from '../src/discovery/website.js';
 import { extractBounceInfo } from '../src/inbound/bounce.js';
 import { processInbound } from '../src/inbound/process.js';
 import { emailHealthSnapshot, evaluateKillSwitch } from '../src/outreach/killswitch.js';
@@ -90,43 +89,6 @@ describe('Ö1 — IP/CIDR ve iç uç ağ katmanı', () => {
   });
 });
 
-describe('Ö2 — SSRF koruması', () => {
-  const lookupMap: Record<string, string[]> = { 'public.example': ['93.184.216.34'], 'evil.example': ['93.184.216.34', '10.0.0.5'], 'meta.example': ['169.254.169.254'], 'v6.example': ['::1'], 'mapped.example': ['::ffff:127.0.0.1'] };
-  const lookup = async (h: string) => lookupMap[h] ?? [];
-  it('şema, port, kullanıcı bilgisi, localhost ve özel DNS sonuçları reddedilir', async () => {
-    await expect(assertSafeUrl('https://public.example/', lookup)).resolves.toBeInstanceOf(URL);
-    for (const u of ['ftp://public.example/', 'https://public.example:4100/', 'https://user:pw@public.example/', 'http://localhost/', 'http://api.internal/', 'http://127.0.0.1/', 'http://[::1]/', 'http://evil.example/', 'http://meta.example/latest/meta-data', 'http://v6.example/', 'http://mapped.example/', 'http://0x7f000001/', 'http://unknown.example/']) {
-      await expect(assertSafeUrl(u, lookup), u).rejects.toBeInstanceOf(SsrfBlockedError);
-    }
-  });
-  it('yönlendirme ile özel ağa kaçış engellenir; her atlama doğrulanır', async () => {
-    const calls: string[] = [];
-    const fetchFn = (async (input: any) => {
-      const url = String(input); calls.push(url);
-      if (url === 'https://public.example/') return new Response('', { status: 302, headers: { location: 'http://10.0.0.5/admin' } });
-      if (url === 'https://public.example/a') return new Response('', { status: 301, headers: { location: '/b' } });
-      if (url === 'https://public.example/b') return new Response('<html><title>ok</title></html>', { status: 200 });
-      return new Response('x', { status: 200 });
-    }) as unknown as typeof fetch;
-    await expect(safeFetch('https://public.example/', { fetchFn, lookup })).rejects.toThrow(/özel ağ/);
-    expect(calls).toEqual(['https://public.example/']);
-    const ok = await safeFetch('https://public.example/a', { fetchFn, lookup });
-    expect(ok.status).toBe(200);
-    expect(calls.slice(1)).toEqual(['https://public.example/a', 'https://public.example/b']);
-    // Döngü: en fazla 3 yönlendirme
-    const loopFetch = (async () => new Response('', { status: 302, headers: { location: 'https://public.example/loop' } })) as unknown as typeof fetch;
-    await expect(safeFetch('https://public.example/loop', { fetchFn: loopFetch, lookup })).rejects.toThrow(/yönlendirme/);
-  });
-  it('fetchWebsiteFacts özel hedefte hiç istek atmaz ve nedeni kaydeder', async () => {
-    let called = 0;
-    const fetchFn = (async () => { called++; return new Response('x'); }) as unknown as typeof fetch;
-    const f = await fetchWebsiteFacts('http://evil.example', { timeoutMs: 1000, fetchFn, lookup });
-    expect(f.fetched).toBe(false); expect(f.error).toMatch(/ssrf/); expect(called).toBe(0);
-    const f2 = await fetchWebsiteFacts('https://192.168.1.1/', { timeoutMs: 1000, fetchFn, lookup });
-    expect(f2.fetched).toBe(false); expect(called).toBe(0);
-  });
-});
-
 describe('K4 — bounce/DSN işleme', () => {
   it('DSN alanlarından alıcı ve Message-ID çıkarır', () => {
     const info = extractBounceInfo(`Delivery Status Notification\nFinal-Recipient: rfc822; Yok@Firma.example\nOriginal-Recipient: rfc822;yok@firma.example\nAction: failed\nMessage-ID: <11111111-2222-4333-8444-555555555555@test.invalid>\nReply-To: reply+abc@test.invalid`, 'test.invalid');
@@ -166,7 +128,8 @@ describe('K4 — bounce/DSN işleme', () => {
     expect((await pool.query(`SELECT 1 FROM tasks WHERE title LIKE 'Eşleşmeyen bounce:%'`)).rowCount).toBe(1);
     const snap = await emailHealthSnapshot(pool, 'mock');
     expect(snap.unmatchedBounces24h).toBe(1);
-    expect(snap.bounced24h).toBeGreaterThanOrEqual(3);
+    expect(snap.bounced24h).toBe(1); // tek iş, yinelenen bounce bir kez sayılır (D6)
+    expect(snap.sent24h).toBe(1);
   });
 });
 
@@ -237,19 +200,35 @@ describe('K2/Ö9/Ö1 — dağıtım dosyaları', () => {
   it('compose: log rotasyonu her serviste, portlar yalnız loopback, bellek limitleri', () => {
     const c = readFileSync(path.join(ROOT, 'docker-compose.yml'), 'utf8');
     expect(c).toMatch(/max-size: "10m"/); expect(c).toMatch(/max-file: "3"/);
-    expect((c.match(/logging: \*default-logging/g) ?? []).length).toBe(3);
+    expect((c.match(/logging: \*default-logging/g) ?? []).length).toBe(2);
     expect(c).not.toMatch(/"0\.0\.0\.0:\d+:\d+"/); expect(c).toMatch(/127\.0\.0\.1:4100:4100/); expect(c).toMatch(/127\.0\.0\.1:4200:4200/);
-    expect((c.match(/memory: 256M/g) ?? []).length).toBe(3);
-    expect(c).toMatch(/INTERNAL_ALLOWED_IPS/);
+    expect((c.match(/memory: 256M/g) ?? []).length).toBe(2);
+    expect(c).toMatch(/INTERNAL_ALLOWED_IPS/); expect(c).toMatch(/name: bays-acq-v1/); expect(c).toMatch(/AUTO_MIGRATE: \$\{AUTO_MIGRATE:-false\}/);
+    const dbo = readFileSync(path.join(ROOT, 'deploy/compose.db.yml'), 'utf8');
+    expect(dbo).toMatch(/@db:5432/); expect(dbo).toMatch(/BAYS_ACQ_DB_PASSWORD:\?/); expect(dbo).not.toMatch(/\n\s+ports:/); expect(dbo).toMatch(/condition: service_healthy/);
+    const n8n = readFileSync(path.join(ROOT, 'deploy/compose.n8n-network.yml'), 'utf8');
+    expect(n8n).toMatch(/external: true/); expect(n8n).toMatch(/N8N_DOCKER_NETWORK:\?/); expect(n8n).toMatch(/aliases: \[bays-acq-v1-api\]/);
   });
-  it('Caddy: /internal yalnız özel ağ, diğerleri 403; /api ve /webhooks API\'ye', () => {
+  it('Caddy: alan adı değişkeni, /internal kamuya 403; /api ve /webhooks API\'ye', () => {
     const caddy = readFileSync(path.join(ROOT, 'deploy/Caddyfile.snippet'), 'utf8');
-    expect(caddy).toMatch(/remote_ip private_ranges/); expect(caddy).toMatch(/respond "forbidden" 403/);
+    expect(caddy).toMatch(/\{\$BAYS_ACQ_V1_DOMAIN\}/); expect(caddy).not.toMatch(/^acq\.bayssystem\.com/m);
+    expect(caddy).toMatch(/@internal path \/internal\/\*/); expect(caddy).toMatch(/respond "forbidden" 403/); expect(caddy).not.toMatch(/@internal[\s\S]*reverse_proxy 127\.0\.0\.1:4100[\s\S]*handle \{/);
     expect(caddy).toMatch(/handle \/api\/\*/); expect(caddy).toMatch(/handle \/webhooks\/\*/);
   });
-  it('preflight ve build betikleri bellek/swap kontrolü yapar', () => {
+  it('preflight ve build betikleri bellek/swap kontrolü yapar; adlandırma bays-acq-v1', () => {
     expect(readFileSync(path.join(ROOT, 'deploy/scripts/preflight.sh'), 'utf8')).toMatch(/swap/i);
     const b = readFileSync(path.join(ROOT, 'deploy/scripts/build-images.sh'), 'utf8');
-    expect(b).toMatch(/check_mem/); expect(b).toMatch(/docker save/);
+    expect(b).toMatch(/check_mem/); expect(b).toMatch(/docker save -o "\$OUT" bays-acq-v1-api:latest bays-acq-v1-panel:latest/);
+    for (const u of ['bays-acq-v1-api.service', 'bays-acq-v1-panel.service']) expect(readFileSync(path.join(ROOT, 'deploy/systemd', u), 'utf8')).toMatch(/\/opt\/bays-acq-v1\//);
+  });
+  it('docker compose config: A, B (parola zorunlu) ve n8n ağı (ağ adı zorunlu) — compose CLI varsa', () => {
+    const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
+    if (spawnSync('docker', ['compose', 'version']).status !== 0) { console.warn('docker compose yok, atlandı'); return; }
+    const cfg = (files: string[], env: Record<string, string>) => spawnSync('docker', ['compose', ...files.flatMap((f) => ['-f', f]), 'config', '-q'], { cwd: ROOT, env: { ...process.env, ...env }, encoding: 'utf8' });
+    expect(cfg(['docker-compose.yml'], {}).status).toBe(0);
+    expect(cfg(['docker-compose.yml', 'deploy/compose.db.yml'], { BAYS_ACQ_DB_PASSWORD: 'x' }).status).toBe(0);
+    expect(cfg(['docker-compose.yml', 'deploy/compose.db.yml'], {}).status).not.toBe(0);
+    expect(cfg(['docker-compose.yml', 'deploy/compose.n8n-network.yml'], { N8N_DOCKER_NETWORK: 'n8n_default' }).status).toBe(0);
+    expect(cfg(['docker-compose.yml', 'deploy/compose.n8n-network.yml'], {}).status).not.toBe(0);
   });
 });

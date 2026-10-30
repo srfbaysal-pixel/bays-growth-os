@@ -83,7 +83,14 @@ let cached: Config | null = null;
 
 /** Ortam değişkenlerini doğrular. Eksik/yanlış değerde açık hata verir. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, override?: Partial<Config>): Config {
-  const parsed = ConfigSchema.safeParse({ ...env, ...(override ?? {}) });
+  // D1: ortam değişkeni boş veya yalnız boşluk ise "tanımsız" sayılır (KEY= satırı = kapalı/varsayılan).
+  // Dolu ama geçersiz değer (ör. bozuk URL) açık hata verir; hata metni değerin kendisini içermez (sır sızmaz).
+  const raw: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries({ ...env, ...(override ?? {}) })) {
+    if (typeof v === 'string') { const t = v.trim(); if (t !== '') raw[k] = t; }
+    else if (v !== undefined && v !== null) raw[k] = v;
+  }
+  const parsed = ConfigSchema.safeParse(raw);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     throw new Error(`Yapılandırma hatası: ${issues}`);

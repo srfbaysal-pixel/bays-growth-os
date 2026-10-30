@@ -7,8 +7,8 @@ After=network.target postgresql.service
 [Service]
 Type=simple
 User=bays
-WorkingDirectory=/opt/bays-acq/acquisition-engine/apps/api
-EnvironmentFile=/opt/bays-acq/acquisition-engine/.env
+WorkingDirectory=/opt/bays-acq-v1/acquisition-engine/apps/api
+EnvironmentFile=/opt/bays-acq-v1/acquisition-engine/.env
 Environment=NODE_ENV=production
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
@@ -17,7 +17,7 @@ MemoryMax=300M
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/opt/bays-acq/acquisition-engine/apps/api
+ReadWritePaths=/opt/bays-acq-v1/acquisition-engine/apps/api
 
 [Install]
 WantedBy=multi-user.target

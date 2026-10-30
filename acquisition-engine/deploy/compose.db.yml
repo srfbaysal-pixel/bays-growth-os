@@ -1,0 +1,30 @@
+# Seçenek B — aynı Compose projesinde AYRI PostgreSQL (mevcut sunucu PostgreSQL'ine dokunmaz).
+# Kullanım: docker compose -f docker-compose.yml -f deploy/compose.db.yml up -d
+# BAYS_ACQ_DB_PASSWORD zorunludur; güvensiz varsayılan yoktur (yoksa 'config' aşamasında durur).
+# PostgreSQL portu host'a YAYIMLANMAZ; bakım için geçici olarak "127.0.0.1:5433:5432" eklenebilir.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    environment:
+      POSTGRES_DB: ${EXPECTED_DB_NAME:-bays_acq}
+      POSTGRES_USER: bays_acq
+      POSTGRES_PASSWORD: ${BAYS_ACQ_DB_PASSWORD:?BAYS_ACQ_DB_PASSWORD gerekli (deploy/compose.db.yml)}
+    volumes:
+      - bays_acq_v1_pgdata:/var/lib/postgresql/data
+    deploy: { resources: { limits: { memory: 256M } } }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U bays_acq -d ${EXPECTED_DB_NAME:-bays_acq}"], interval: 10s, timeout: 5s, retries: 12, start_period: 20s }
+
+  api:
+    environment:
+      # Servis DNS adı 'db' — host.docker.internal / 127.0.0.1 DEĞİL
+      DATABASE_URL: postgres://bays_acq:${BAYS_ACQ_DB_PASSWORD:?BAYS_ACQ_DB_PASSWORD gerekli}@db:5432/${EXPECTED_DB_NAME:-bays_acq}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  bays_acq_v1_pgdata: {}

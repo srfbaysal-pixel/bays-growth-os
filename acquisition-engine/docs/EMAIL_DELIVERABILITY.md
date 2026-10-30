@@ -12,8 +12,21 @@ Geçmişte gönderim sorunu yaşandığı için e-posta modülü "çalıştığ�
 | İnsan onayı | `approvals.ts` | `send_jobs` kaydı yalnız `approveDraft` ile oluşur; `draft_id` UNIQUE. |
 | İdempotency | `sender.ts` | `FOR UPDATE SKIP LOCKED` kilidi; iş kimliği `Idempotency-Key`/`X-Bays-Idempotency` başlığı; `accepted` sonrası ikinci istek yok. |
 | Retry | `sender.ts` | 3 deneme, 2/10/30 dk bekleme; sonra `failed`. Deneme sayısı DB'de. |
-| Kota | `killswitch.ts` | Saatlik/günlük sayaç atomik; aşımda iş kuyruğa geri döner (1 saat). |
-| Kill-switch | `killswitch.ts`, `health/notify.ts` | Bounce oranı > `EMAIL_MAX_BOUNCE_RATE` (≥10 örnek), ardışık hata ≥ `EMAIL_MAX_CONSECUTIVE_ERRORS`, günlük kota dolu → `outreach_paused`. Durum değişiminde panel görevi + audit + `ALERT_WEBHOOK_URL` bildirimi. Panelden sürdürülür. |
+| Kota | `killswitch.ts`, `sender.ts` | Saatlik/günlük sayaç atomik ve yalnız **gerçek** gönderim denemesinde artar (dry-run tüketmez, D6); aşımda iş kuyruğa geri döner (1 saat). |
+| Kill-switch | `killswitch.ts`, `health/notify.ts` | Bounce oranı > `EMAIL_MAX_BOUNCE_RATE` (≥10 tekil gönderim), ardışık hata ≥ `EMAIL_MAX_CONSECUTIVE_ERRORS`, günlük kota dolu → `outreach_paused`. Durum değişiminde panel görevi + audit + `ALERT_WEBHOOK_URL` bildirimi. Panelden sürdürülür. |
+
+### Bounce oranı semantiği (D6)
+
+Son 24 saat, yalnız gerçek gönderimler (dry-run hariç):
+
+| Terim | Tanım |
+| --- | --- |
+| `sent24h` | sağlayıcıya ulaşan **tekil** gönderim işi (`accepted` veya `reject` olayı olan işler) |
+| `bounced24h` | bunlardan `bounce` / `complaint` / `reject` olayı olan **tekil** iş; `accepted→delivered` ikinci kez saymaz, aynı işe yinelenen bounce bir kez sayılır |
+| `unmatchedBounces24h` | hiçbir işe eşleşmeyen DSN postaları (K4); ayrı raporlanır |
+| `bounceRate` | `(bounced24h + unmatchedBounces24h) / sent24h` — eşleşmeyen DSN'ler muhafazakâr olarak paya eklenir |
+
+Örnek: 100 tekil kabul edilen mesajdan 5'i bounce → %5 (eşik `0.05` ile **durmaz**, kural `>`); 6. tekil bounce veya 1 eşleşmeyen DSN → %6 → durur. `sent24h < 10` iken oran değerlendirilmez. `bounce` = alıcı sunucu teslim edemedi, `complaint` = spam bildirimi, `reject` = sağlayıcı kabul etmedi; üçü de alıcıyı engelleme listesine alır.
 | Bounce/şikâyet | `recordDeliveryEvent`, `inbound/process.ts`, `inbound/bounce.ts` | Sağlayıcı webhook'u veya gelen DSN postası: `Final-Recipient`/gövdedeki Message-ID ile iş bulunur, alıcı engellenir, iş `bounced`. Eşleşmeyen DSN'de de alıcı engellenir ve inceleme görevi açılır; bu postalar kill-switch bounce oranına dahildir. Gönderen (MAILER-DAEMON) engellenmez. |
 | Ret | `inbound/process.ts` | "hayır/istemiyorum/unsubscribe" → işletme + e-posta + alan adı + telefon + Instagram tüm kanallarda engellenir. |
 | Yanıt eşleştirme | `inbound/process.ts` | `Reply-To: reply+<token>@EMAIL_REPLY_DOMAIN` ve `Message-ID: <job_id@domain>`; yedek: kişi e-postası, alan adı. |

@@ -1,6 +1,6 @@
 # Test raporu
 
-Tarih: 2026-10-30 · Ortam: geliştirme konteyneri (Node 22.22, PostgreSQL 16.15 yerel, Chromium/Playwright). Gerçek API anahtarı **kullanılmadı**; tüm dış sağlayıcılar mock.
+Tarih: 2026-10-30 (dağıtım öncesi düzeltmeler D1–D6 sonrası) · Ortam: geliştirme konteyneri (Node 22.22, PostgreSQL 16.15 yerel, Chromium/Playwright). Gerçek API anahtarı **kullanılmadı**; tüm dış sağlayıcılar mock.
 
 ## Komutlar ve sonuçlar
 
@@ -8,10 +8,11 @@ Tarih: 2026-10-30 · Ortam: geliştirme konteyneri (Node 22.22, PostgreSQL 16.15
 | --- | --- |
 | `npm --prefix apps/api run typecheck` | Hata yok |
 | `npm --prefix apps/panel run typecheck` | Hata yok |
-| `npm --prefix apps/api test` (vitest, gerçek PostgreSQL `bays_acq_test`) | **79/79 geçti**, 10 dosya, ~8 sn (17'si denetim düzeltmeleri: `tests/hardening.test.ts`) |
+| `npm --prefix apps/api test` (vitest, gerçek PostgreSQL `bays_acq_test`) | **96/96 geçti**, 14 dosya, ~10 sn (`hardening.test.ts` 14, `config.test.ts` 5 (D1), `ssrf.test.ts` 7 (D4), `scripts.test.ts` 4 (D5, gerçek pg_dump/pg_restore, geçici test DB), `quota-bounce.test.ts` 3 (D6)) |
 | `npm --prefix apps/panel test` (vitest) | **2/2 geçti** |
 | `npm --prefix apps/panel run build` (Next 15, standalone) | Başarılı; ilk yük JS ~103–111 kB |
-| `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npm --prefix apps/panel run test:e2e` | **10/10 geçti** (5 senaryo × Pixel 7 + masaüstü), ~15 sn; API + panel otomatik başlatıldı |
+| `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npm --prefix apps/panel run test:e2e` | **10/10 geçti** (5 senaryo × Pixel 7 + masaüstü), ~30 sn; API + panel otomatik başlatıldı |
+| `docker compose config -q` (A), `-f deploy/compose.db.yml` (B, `BAYS_ACQ_DB_PASSWORD` ile / olmadan), `-f deploy/compose.n8n-network.yml` (ağ adı ile / olmadan) | A ve B geçerli; parola/ağ adı eksikse açık hata (Docker Compose v5.6.1, yalnız yapılandırma; daemon yok) |
 | `node tools/validate-n8n.mjs` | 3/3 workflow OK (13 / 20 / 22 düğüm) |
 
 ## Kabul kriterleri eşlemesi
@@ -35,11 +36,19 @@ Tarih: 2026-10-30 · Ortam: geliştirme konteyneri (Node 22.22, PostgreSQL 16.15
 | Ö1 iç uç ağ katmanı | `hardening.test.ts` (dış IP geçerli imzayla 403, sahte X-Forwarded-For yok sayılır, özel liste) | ✅ |
 | Ö2 SSRF | `hardening.test.ts` (şema/port/localhost/özel DNS/mapped IPv6, yönlendirme kaçışı, döngü sınırı, istek atılmaz) | ✅ |
 | Ö8 bildirim | `hardening.test.ts` (tek bildirim, imza doğrulaması, görev + audit, webhook yok/hata durumunda akış sürer) | ✅ |
-| K2/Ö9 dağıtım dosyaları | `hardening.test.ts` (.dockerignore, log rotasyonu, loopback portlar, Caddy 403, betikler) | ✅ |
+| K2/Ö9 dağıtım dosyaları | `hardening.test.ts` (.dockerignore, log rotasyonu, loopback portlar, Caddy 403, betikler, compose config A/B/n8n) | ✅ |
+| D1 boş opsiyonel URL | `config.test.ts` (eksik/boş/boşluk → kapalı; geçerli; geçersiz → sırsız hata; `.env.example` yüklenir; kapalı webhook dış çağrı yapmaz) | ✅ |
+| D4 SSRF sabitleme | `ssrf.test.ts` (rebinding: ikinci çözüm özel olsa da taşıma doğrulanan IP ile; yönlendirmede yeniden doğrulama; gerçek undici taşıma yerel sunucuya sabit IP ile Host korunarak; boyut/süre sınırı; TLS self-signed red, hostname uyuşmazlığı red, CA ile başarı) | ✅ |
+| D5 yedek/geri yükleme | `scripts.test.ts` (kimlik doğrulama, n8n reddi, yanlış ad, bozuk/eksik sağlama, onaysız iptal, parola sızmaz, gerçek restore test DB'de) | ✅ |
+| D6 kota ve bounce oranı | `quota-bounce.test.ts` (dry-run kota tüketmez, gerçek-send kota 1'den başlar; 100 işten 5 bounce → %5, delivered/yinelenen bounce etkisiz, 6. bounce ve eşleşmeyen DSN eşiği aşar; <10 örnek değerlendirilmez; dry_run paydada yok) | ✅ |
 | Referans kampanyası | `workflows.test.ts` (durum makinesi, paylaşım doğrulaması → indirim hakkı, klinikte mevzuat engeli) | ✅ |
 | E-posta DNS ön kontrol | `workflows.test.ts` enjekte çözümleyici ile SPF/DKIM/DMARC/MX | ✅ |
 
-## Test edilmeyenler (gerçek ortam gerektirir)
+## Çalıştırılamayan kontroller (gerçek ortam gerektirir)
+
+Docker daemon yok: `docker compose config` ile yalnız yapılandırma doğrulandı; konteyner ayağa kaldırma, gerçek ağ bağlantısı, izinsiz kaynak ve HMAC testleri konteyner ortamında **yapılmadı** (aynı mantık `app.inject` ile süreç içinde test edildi). Caddy ikilisi yok: `caddy validate` çalıştırılmadı. Sunucu envanteri (mevcut Caddyfile, n8n Docker ağı, PostgreSQL pg_hba) bilinmiyor.
+
+### Gerçek ortam gerektirenler
 
 **K5 — açık dağıtım kabul kriteri:** SMTP/Resend gerçek teslimat, DKIM/SPF/DMARC "pass", IMAP ile gerçek yanıt ve bounce turu bu ortamda doğrulanmadı · Google Places gerçek yanıtı · Anthropic gerçek çıktı kalitesi · n8n'e import ve `$env`/Crypto düğümü davranışı (yapısal kontrol yapıldı) · Docker build (daemon yok) · Caddy üzerinde HTTPS · Android cihazda "Ana ekrana ekle".
 

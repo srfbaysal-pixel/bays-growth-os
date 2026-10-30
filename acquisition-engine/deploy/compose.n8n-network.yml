@@ -1,0 +1,19 @@
+# Mevcut Docker n8n ↔ yeni API özel ağ bağlantısı.
+# ÖNKOŞUL: n8n'in bulunduğu Docker ağının adı (sunucuda: docker network ls / docker inspect <n8n-konteyner>).
+#          .env → N8N_DOCKER_NETWORK=<o ağ adı>. Ağ yoksa veya n8n Docker'da değilse bu dosyayı KULLANMAYIN;
+#          host'taki n8n için BAYS_API_URL=http://127.0.0.1:4100 (host loopback yayını) yeterlidir.
+# Etki: yalnız API konteyneri o ağa da katılır ve "bays-acq-v1-api" adıyla erişilebilir olur.
+#       n8n tarafında BAYS_API_URL=http://bays-acq-v1-api:4100. Kaynak IP özel aralıkta kalır (INTERNAL_ALLOWED_IPS),
+#       HMAC imzası yine zorunludur. n8n'in global ayarları değiştirilmez; host'ta ek port açılmaz.
+# Kullanım: docker compose -f docker-compose.yml -f deploy/compose.n8n-network.yml up -d api panel
+services:
+  api:
+    networks:
+      default: {}
+      n8n_shared:
+        aliases: [bays-acq-v1-api]
+
+networks:
+  n8n_shared:
+    external: true
+    name: ${N8N_DOCKER_NETWORK:?N8N_DOCKER_NETWORK gerekli (mevcut n8n Docker ağının adı)}

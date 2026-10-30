@@ -60,14 +60,6 @@ export async function processSendQueue(pool: pg.Pool, cfg: Config, provider: Ema
       continue;
     }
 
-    const quota = await reserveQuota(pool, cfg);
-    if (!quota.ok) {
-      await pool.query(`UPDATE send_jobs SET status = 'queued', next_attempt_at = now() + interval '1 hour', attempts = attempts - 1 WHERE id = $1`, [job.id]);
-      await pool.query(`INSERT INTO send_events(send_job_id, event, detail) VALUES ($1,'blocked',$2)`, [job.id, JSON.stringify({ quota: quota.reason })]);
-      stats.blocked++;
-      break;
-    }
-
     const messageId = `<${job.id}@${cfg.EMAIL_REPLY_DOMAIN}>`;
     const replyTo = `reply+${job.reply_token}@${cfg.EMAIL_REPLY_DOMAIN}`;
     if (cfg.DRY_RUN) {
@@ -80,6 +72,15 @@ export async function processSendQueue(pool: pg.Pool, cfg: Config, provider: Ema
       stats.dry_run++;
       log.info('dry_run gönderim', { job: job.id, to: job.to_address });
       continue;
+    }
+
+    // D6: sağlayıcı kotası yalnız GERÇEK gönderim denemesinde rezerve edilir (dry-run yukarıda ayrıldı).
+    const quota = await reserveQuota(pool, cfg);
+    if (!quota.ok) {
+      await pool.query(`UPDATE send_jobs SET status = 'queued', next_attempt_at = now() + interval '1 hour', attempts = attempts - 1 WHERE id = $1`, [job.id]);
+      await pool.query(`INSERT INTO send_events(send_job_id, event, detail) VALUES ($1,'blocked',$2)`, [job.id, JSON.stringify({ quota: quota.reason })]);
+      stats.blocked++;
+      break;
     }
 
     try {

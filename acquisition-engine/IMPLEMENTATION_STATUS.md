@@ -1,6 +1,6 @@
 # IMPLEMENTATION_STATUS — BaysSystems Customer Acquisition Engine V1
 
-Son güncelleme: 2026-10-30 (denetim düzeltmeleri sonrası). Durum: **geliştirme teslimi, test modunda kurulabilir.** Üretim ortamına geçiş ayrı onaya ve aşağıdaki "gerçek ortamda doğrulanacaklar" listesine bağlıdır.
+Son güncelleme: 2026-10-30 (denetim düzeltmeleri + dağıtım öncesi düzeltmeler D1–D6). Durum: **geliştirme teslimi, test modunda kurulabilir.** Üretim ortamına geçiş ayrı onaya ve aşağıdaki "gerçek ortamda doğrulanacaklar" listesine bağlıdır.
 
 ## Denetim düzeltmeleri (teknik denetim raporu, kabul edilen maddeler)
 
@@ -14,6 +14,19 @@ Son güncelleme: 2026-10-30 (denetim düzeltmeleri sonrası). Durum: **geliştir
 | Ö2 | Web tarayıcısında SSRF koruması: şema/port/kullanıcı bilgisi kontrolü, DNS çözümünde tüm adresler özel ağ taraması, yönlendirmeler elle izlenir ve her atlama yeniden doğrulanır | `apps/api/src/discovery/website.ts`, `apps/api/src/lib/ip.ts` | `tests/hardening.test.ts` Ö2 |
 | Ö8 | Kill-switch durum değişiminde yönetici bildirimi: panel görevi + audit + (varsa) `ALERT_WEBHOOK_URL`'e imzalı POST | `apps/api/src/health/notify.ts`, `apps/api/src/outreach/killswitch.ts` | `tests/hardening.test.ts` Ö8 |
 | Ö9 | Docker log rotasyonu (json-file 3 × 10 MB) tüm servislerde | `docker-compose.yml` | `tests/hardening.test.ts` dağıtım dosyaları |
+
+## Dağıtım öncesi düzeltmeler (D1–D6)
+
+| Madde | Öncelik | Düzeltme | Dosyalar | Test |
+| --- | --- | --- | --- | --- |
+| D1 | P0 | Boş/boşluk opsiyonel değerler tanımsız sayılır (bildirim kapalı); dolu geçersiz URL sırsız hata | `apps/api/src/config.ts`, `.env.example` | `tests/config.test.ts` |
+| D2 | P0 | Haricî DB için `host.docker.internal` + önkoşullar; ayrı DB `deploy/compose.db.yml` (`db:5432`, parola zorunlu, port yayımlanmaz, sağlık bekler); n8n ağı `deploy/compose.n8n-network.yml` (`bays-acq-v1-api` alias, ağ adı zorunlu); `.env` yokken ve DB profilsiz `docker compose config` geçerli; `AUTO_MIGRATE=false` + açık migration adımı; `EXPECTED_DB_NAME` korunur | `docker-compose.yml`, `deploy/compose.db.yml`, `deploy/compose.n8n-network.yml`, `.env.example`, `docs/KURULUM_VE_DEPLOYMENT.md` | `tests/hardening.test.ts` (compose config A/B/n8n) |
+| D3 | P0 | Tüm örnek adlar `bays-acq-v1` (proje, dizin, imaj, systemd, yedek); alan adı `BAYS_ACQ_V1_DOMAIN` değişkeni; Caddy'de `/internal/*` kamuya 403; eski `/review` sistemini koruyan Caddy entegrasyon ve geri alma planı; genel `down -v` talimatı kaldırıldı; workflow'lar `active=false` | `deploy/Caddyfile.snippet`, `deploy/systemd/bays-acq-v1-*.service`, `deploy/scripts/build-images.sh`, `docs/*` | `tests/hardening.test.ts`, `tools/validate-n8n.mjs` |
+| D4 | P0 | Bağlantı doğrulanan IP'ye sabitlenir (undici `connect.lookup`), ikinci DNS çözümü yok; SNI/sertifika hostname'e göre; yönlendirmeler elle ve yeniden doğrulamalı; gövde okunurken boyut sınırı; Agent her istekte kapatılır | `apps/api/src/discovery/safeFetch.ts`, `apps/api/src/discovery/website.ts`, `apps/api/package.json` (undici) | `tests/ssrf.test.ts` |
+| D5 | P1 | Backup/restore gerçek `current_database()` doğrular, n8n adını harf duyarsız reddeder, parolayı tüm çıktılarda maskeler, sağlama dosyası zorunlu, `pg_restore --list` okunabilirlik kontrolü, `--yes` dışında açık onay | `deploy/scripts/db-common.sh`, `deploy/scripts/backup.sh`, `deploy/scripts/restore.sh` | `tests/scripts.test.ts` |
+| D6 | P1 | Kota yalnız gerçek gönderimde rezerve edilir; bounce oranı tekil iş bazında (accepted→delivered tek, yinelenen bounce tek); eşleşmeyen DSN ayrı raporlanır ve paya eklenir; semantik belgelendi | `apps/api/src/outreach/sender.ts`, `apps/api/src/outreach/killswitch.ts`, `docs/EMAIL_DELIVERABILITY.md` | `tests/quota-bounce.test.ts` |
+
+P0 (D1–D4) ve P1 (D5–D6) tamamlandı ve test edildi. Gerçek sunucuda yapılmayanlar: sunucu envanteri (Caddyfile, n8n ağı, pg_hba), Docker konteyner çalıştırma, Caddy validate/reload, n8n import, SMTP/IMAP.
 
 **K5 (gerçek SMTP/IMAP) bu ortamda doğrulanmadı ve açık dağıtım kabul kriteridir:** `docs/EMAIL_DELIVERABILITY.md` test protokolünün 2–6. adımları gerçek hesapla geçmeden canlı gönderim açılmaz.
 
@@ -34,7 +47,7 @@ Son güncelleme: 2026-10-30 (denetim düzeltmeleri sonrası). Durum: **geliştir
 
 ## Test edilenler
 
-API 79/79 (gerçek PostgreSQL), panel birim 2/2, Playwright e2e 10/10 (mobil + masaüstü), n8n yapısal doğrulama 3/3, tip kontrolü ve üretim derlemesi. Ayrıntı: `docs/TEST_REPORT.md`.
+API 96/96 (gerçek PostgreSQL; yedek/geri yükleme testleri gerçek pg_dump/pg_restore ile geçici test DB'de), panel birim 2/2, Playwright e2e 10/10 (mobil + masaüstü), n8n yapısal doğrulama 3/3, `docker compose config` A/B/n8n kombinasyonları, tip kontrolü ve üretim derlemesi. Docker daemon ve Caddy ikilisi bu ortamda yok. Ayrıntı: `docs/TEST_REPORT.md`.
 
 ## Eksik bağlantılar / bilinçli sınırlamalar
 
@@ -57,7 +70,7 @@ API 79/79 (gerçek PostgreSQL), panel birim 2/2, Playwright e2e 10/10 (mobil + m
 6. E-posta protokolü (`docs/EMAIL_DELIVERABILITY.md`): preflight, kuru çalışma, test alıcısı, yanıt turu, bounce turu; SPF/DKIM/DMARC `pass`.
 7. IMAP: `reply+token@` adreslerinin kutuya düşmesi; WF3 eşleşme oranı.
 8. Hukuki doğrulama: İYS/KVKK (ve klinik mevzuatı) → `COMPLIANCE_*` bayrakları. Bu adım olmadan gerçek alıcılara otomatik gönderim **yapılmaz**.
-9. Docker build (bu ortamda daemon yoktu; `deploy/scripts/build-images.sh` ile sunucu dışında derleyip taşımak önerilir) veya systemd yolu.
+9. Docker build ve konteyner çalıştırma (bu ortamda daemon yoktu; `deploy/scripts/build-images.sh` ile sunucu dışında derleyip taşımak önerilir) veya systemd yolu; Seçenek A için PostgreSQL köprü arayüzü/pg_hba önkoşulu; Seçenek B için parola.
 10. Fiyat planlarının panelden girilmesi (seed değerleri yer tutucu).
 
 ## Varsayımlar

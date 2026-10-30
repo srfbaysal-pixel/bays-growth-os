@@ -10,6 +10,7 @@ import { MockAiProvider } from '../src/ai/mock.js';
 import { MockEmailProvider } from '../src/email/mock.js';
 import { MockDiscoveryProvider, FIXTURES_DIR } from '../src/discovery/mock.js';
 import type { AppContext } from '../src/http/context.js';
+import type { Transport, TransportRequest } from '../src/discovery/safeFetch.js';
 
 export const TEST_DB_URL = process.env.DATABASE_URL_TEST ?? 'postgres://bays_acq:bays_acq_dev@127.0.0.1:5432/bays_acq_test';
 
@@ -36,23 +37,28 @@ export function cfg(over: Partial<Config> = {}): Config {
   return c;
 }
 
-export async function mockWebsiteFetch(): Promise<typeof fetch> {
+/** Fixture web siteleri için taşıma katmanı: ağa çıkmaz, doğrulanan adresi kaydeder. */
+export async function mockWebsiteTransport(): Promise<Transport & { calls: TransportRequest[] }> {
   const sites = JSON.parse(await readFile(path.join(FIXTURES_DIR, 'mock-websites.json'), 'utf8')) as Record<string, { status: number; html: string }>;
-  return (async (input: any, _init?: any) => {
-    const url = String(input);
-    if (url.endsWith('/robots.txt')) return new Response('', { status: 404 });
+  const calls: TransportRequest[] = [];
+  const t = (async (req: TransportRequest) => {
+    calls.push(req);
+    const url = req.url;
+    if (url.endsWith('/robots.txt')) return { status: 404, location: null, body: '', truncated: false };
     const hit = sites[url] ?? sites[url.replace(/\/$/, '')];
-    if (!hit) return new Response('not found', { status: 404 });
-    return new Response(hit.html, { status: hit.status, headers: { 'content-type': 'text/html' } });
-  }) as unknown as typeof fetch;
+    if (!hit) return { status: 404, location: null, body: 'not found', truncated: false };
+    return { status: hit.status, location: null, body: hit.html, truncated: false };
+  }) as Transport & { calls: TransportRequest[] };
+  t.calls = calls;
+  return t;
 }
 
 /** Testlerde DNS: fixture alan adları herkese açık bir adrese çözülür (SSRF kontrolünden geçer). */
 export const publicLookup = async (_host: string) => ['93.184.216.34'];
 
-export async function makeCtx(pool: pg.Pool, over: Partial<Config> = {}): Promise<AppContext & { email: MockEmailProvider; lookup: (h: string) => Promise<string[]> }> {
+export async function makeCtx(pool: pg.Pool, over: Partial<Config> = {}): Promise<AppContext & { email: MockEmailProvider; lookup: (h: string) => Promise<string[]>; transport: Transport }> {
   const c = cfg(over);
-  return { cfg: c, pool, ai: new MockAiProvider(), email: new MockEmailProvider(), discovery: new MockDiscoveryProvider(), fetchFn: await mockWebsiteFetch(), lookup: publicLookup };
+  return { cfg: c, pool, ai: new MockAiProvider(), email: new MockEmailProvider(), discovery: new MockDiscoveryProvider(), lookup: publicLookup, transport: await mockWebsiteTransport() };
 }
 
 export async function seedUsers(pool: pg.Pool) {

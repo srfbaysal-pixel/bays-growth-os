@@ -13,7 +13,7 @@
 | Veritabanı | `db/migrations` | PostgreSQL şeması (idempotency, unique kısıtlar, indeksler). Ayrı `bays_acq` veritabanı. |
 | n8n workflow'ları | `n8n/*.json` | WF1 Lead Discovery & Qualification, WF2 Outreach Preparation & Approval, WF3 Reply & Sales Management. |
 | Yapılandırma | `config/sectors/*.json`, `config/services.json` | Sektör sinyalleri/eşikleri, hizmet kataloğu. Fiyatlar veritabanında (`price_plans`). |
-| Dağıtım | `docker-compose.yml`, `deploy/` | Docker Compose, Caddy bloğu, systemd birimleri, yedekleme/geri yükleme. |
+| Dağıtım | `docker-compose.yml`, `deploy/` | Compose (`bays-acq-v1`; haricî DB, `compose.db.yml` ayrı DB, `compose.n8n-network.yml` n8n ağı), Caddy bloğu (`BAYS_ACQ_V1_DOMAIN`), systemd, kimlik doğrulamalı yedekleme/geri yükleme. |
 | Dokümanlar | `docs/` | Mimari, kurulum, e-posta teslim edilebilirliği, entegrasyon listesi, uyumluluk, hata giderme, test raporu. |
 
 ## Hızlı başlangıç (geliştirme)
@@ -40,7 +40,7 @@ npm --prefix apps/api run cli -- wf3-metrics
 ## Testler
 
 ```bash
-npm run test:api     # 62 test (PostgreSQL gerektirir: DATABASE_URL_TEST)
+npm run test:api     # 96 test (PostgreSQL gerektirir: DATABASE_URL_TEST; pg_dump/pg_restore varsa yedek testleri de)
 npm run test:panel   # panel birim testleri
 npm run test:e2e     # Playwright: mobil (Pixel 7) + masaüstü; API+panel otomatik başlatılır
 npm run n8n:validate # workflow JSON yapısal kontrol
@@ -48,6 +48,6 @@ npm run n8n:validate # workflow JSON yapısal kontrol
 
 ## Güvenli varsayılanlar
 
-`DRY_RUN=true`, `LIVE_OUTREACH_ENABLED=false`, `EMAIL_PROVIDER=mock`, `AI_PROVIDER=mock`, `DISCOVERY_PROVIDER=mock`, tüm `COMPLIANCE_*_VERIFIED=false`. Bu bayraklar değişmeden hiçbir gerçek alıcıya e-posta gidemez; Instagram/LinkedIn'de otomatik soğuk mesaj hiçbir modda yapılmaz; WhatsApp yalnız opt-in + onaylı şablon ile.
+`DRY_RUN=true`, `LIVE_OUTREACH_ENABLED=false`, `WHATSAPP_ENABLED=false`, `EMAIL_PROVIDER=mock`, `AI_PROVIDER=mock`, `DISCOVERY_PROVIDER=mock`, `AUTO_MIGRATE=false`, tüm `COMPLIANCE_*_VERIFIED=false`. Boş bırakılan opsiyonel değişkenler (ör. `ALERT_WEBHOOK_URL=`) kapalı sayılır. Bu bayraklar değişmeden hiçbir gerçek alıcıya e-posta gidemez; Instagram/LinkedIn'de otomatik soğuk mesaj hiçbir modda yapılmaz; WhatsApp yalnız opt-in + onaylı şablon ile.
 
 Belgeler: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/KURULUM_VE_DEPLOYMENT.md](docs/KURULUM_VE_DEPLOYMENT.md) · [docs/EMAIL_DELIVERABILITY.md](docs/EMAIL_DELIVERABILITY.md) · [docs/INTEGRATION_CHECKLIST.md](docs/INTEGRATION_CHECKLIST.md) · [docs/COMPLIANCE.md](docs/COMPLIANCE.md) · [docs/TROUBLESHOOTING_ROLLBACK.md](docs/TROUBLESHOOTING_ROLLBACK.md) · [docs/TEST_REPORT.md](docs/TEST_REPORT.md)

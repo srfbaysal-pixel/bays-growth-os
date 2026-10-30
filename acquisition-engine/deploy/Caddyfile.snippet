@@ -1,32 +1,22 @@
-# Mevcut Caddyfile'a EKLENECEK blok (mevcut site bloklarını değiştirmeyin).
-# acq.bayssystem.com → panel (4200) ve API (4100). HTTPS Caddy tarafından otomatik.
-acq.bayssystem.com {
+# Yeni panel için Caddy bloğu — mevcut Caddyfile'a EKLENMEZ, önce incelenir (bkz. docs/KURULUM_VE_DEPLOYMENT.md §4).
+# Alan adı KULLANICI tarafından belirlenir: Caddy ortam değişkeni BAYS_ACQ_V1_DOMAIN (örn. acq-v1.bayssystem.com).
+# Eski acq.bayssystem.com/review sistemi bu blokla ÇAKIŞMAZ; o site bloğuna dokunulmaz.
+# Yalnız /api/*, /webhooks/* ve panel kamuya açılır. /internal/* kamuya KAPALIDIR (403):
+# n8n → API bağlantısı Caddy üzerinden değil, özel ağdan yapılır (http://127.0.0.1:4100 veya
+# compose.n8n-network.yml ile http://bays-acq-v1-api:4100).
+{$BAYS_ACQ_V1_DOMAIN} {
     encode zstd gzip
 
-    # API ve webhook yolları doğrudan API'ye
     handle /api/* {
         reverse_proxy 127.0.0.1:4100
     }
     handle /webhooks/* {
         reverse_proxy 127.0.0.1:4100
     }
-    # Ö1: n8n'in çağırdığı iç uçlar. Ağ katmanı: yalnız özel ağlar (loopback, Docker köprüsü, LAN).
-    # n8n ana makinede çalışıp alan adı üzerinden çağırıyorsa kaynak IP sunucunun GENEL IP'sidir:
-    # bu durumda ya n8n'de BAYS_API_URL=http://127.0.0.1:4100 kullanın (Caddy'yi atlar, önerilen)
-    # ya da aşağıdaki listeye sunucunun genel IP'sini ekleyin. Kimlik katmanı (HMAC) API'de ayrıca zorunludur.
-    @internal_allowed {
-        path /internal/*
-        remote_ip private_ranges
-    }
-    handle @internal_allowed {
-        reverse_proxy 127.0.0.1:4100
-    }
-    @internal_denied path /internal/*
-    handle @internal_denied {
+    @internal path /internal/*
+    handle @internal {
         respond "forbidden" 403
     }
-
-    # Geri kalan her şey Next.js paneli
     handle {
         reverse_proxy 127.0.0.1:4200
     }
@@ -37,6 +27,6 @@ acq.bayssystem.com {
         -Server
     }
     log {
-        output file /var/log/caddy/acq.bayssystem.com.log
+        output file /var/log/caddy/bays-acq-v1.log
     }
 }

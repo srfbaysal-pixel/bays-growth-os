@@ -1,11 +1,11 @@
 [Unit]
 Description=BaysSystems Acquisition Panel (Next.js)
-After=network.target bays-acq-api.service
+After=network.target bays-acq-v1-api.service
 
 [Service]
 Type=simple
 User=bays
-WorkingDirectory=/opt/bays-acq/acquisition-engine/apps/panel
+WorkingDirectory=/opt/bays-acq-v1/acquisition-engine/apps/panel
 Environment=NODE_ENV=production
 Environment=PORT=4200
 Environment=HOSTNAME=127.0.0.1
